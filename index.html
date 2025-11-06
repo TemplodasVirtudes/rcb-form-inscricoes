@@ -363,16 +363,49 @@ const LGPD_PDF_URL = '<<cole aqui o link público do PDF no Drive>>';
       if (spanIn)  spanIn.textContent  = c;
       if (spanOut) spanOut.textContent = c;
     }
-    function openModal(ev){
-      if (ev) { ev.preventDefault(); ev.stopPropagation(); }
-      const accepted = localStorage.getItem(LGPD_STORAGE_KEY);
-      if (accepted === LGPD_VERSION) return;
-      syncCurso();
-      safeSetAttr(modal, 'aria-hidden', 'false');
-      modal.style.display = 'flex';
-      document.body.style.overflow = 'hidden';
-      setTimeout(()=> btnOk && btnOk.focus(), 0);
-    }
+    <script>
+
+// Substitua sua openModal por esta:
+function openModal(ev){
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  // Mesmo que já tenha aceitado, vamos ABRIR o modal para leitura no mobile.
+  // Se quiser bloquear após aceite, comente as 2 linhas abaixo e descomente o early-return.
+  // const accepted = localStorage.getItem(LGPD_STORAGE_KEY);
+  // if (accepted === LGPD_VERSION) return;
+
+  syncCurso();
+  safeSetAttr(modal, 'aria-hidden', 'false');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  setTimeout(()=> btnOk && btnOk.focus(), 0);
+}
+
+// ===== Eventos do link (robustos para mobile) =====
+if (link) {
+  if (!link.getAttribute('href')) link.setAttribute('href', '#');
+  link.setAttribute('role','button');
+  link.setAttribute('aria-haspopup','dialog');
+
+  // Evita que o <label> capture o toque e marque/desmarque o checkbox
+  const stopAll = e => { e.preventDefault(); e.stopPropagation(); };
+
+  // Mobile primeiro
+  link.addEventListener('touchstart', stopAll, { passive:false });
+  link.addEventListener('touchend',   e => { stopAll(e); openModal(e); }, { passive:false });
+
+  // Suporte amplo (pointer) e desktop
+  link.addEventListener('pointerdown', stopAll);
+  link.addEventListener('click',       e => { stopAll(e); openModal(e); });
+}
+
+if (btnX)  btnX.addEventListener('click', closeModal);
+if (btnOk) btnOk.addEventListener('click', ()=>{
+  if (chk) chk.checked = true;
+  localStorage.setItem(LGPD_STORAGE_KEY, LGPD_VERSION);
+  closeModal();
+});
+</script>
+
     function closeModal(){
       safeSetAttr(modal, 'aria-hidden', 'true');
       modal.style.display = 'none';
