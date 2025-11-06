@@ -1,37 +1,60 @@
-/************** Code.gs — versão para index com modal LGPD (com patches) **************/
+// ---------- Code.gs — Cabeçalho eterno + campos ocultos (CICLO/STATUS) + duplicidade por evento + espelho ----------
 
 /// ---------- Configurações principais ----------
-const SHEET_NAME = 'BASE DE DADOS CADASTRAIS';
-const NOME_EMPRESA_DEFAULT = 'RC Beauty';
-const COORD_DEFAULT = 'Darliany Kamila Oliveira';
-const ASSUNTO_EMAIL = 'Inscrição recebida — Programa de Certificações RC Beauty';
+const SHEET_NAME = 'BASE DE DADOS CADASTRAIS'; // aba eterna (origem) — com ESPAÇOS
+const NOME_EMPRESA_DEFAULT = 'Instituto Linuetto Chapecó';
+const COORD_DEFAULT = 'Marson Luiz Klein';
+const ASSUNTO_EMAIL = 'Inscrição recebida — Programa de Certificações Instituto Linuetto Chapecó';
 
 // ID padrão da planilha (onde está o formulário)
-const SID_DEFAULT = '11qKd4sc7laUyFdPWG89NgLagrqH9J6DcCyy3i4vYA_0';
+const SID_DEFAULT = '1leP4uEloD5Hu5PsEap-xWMwrHbbS7Vv_Fncz39Nditc';
 
 // ---------- DESTINO ESPELHO (onde cai a cópia) ----------
-const DEST_SPREADSHEET_ID = '1OmUrifj2_y-Kzk3sC3tg6SyzrrJLDCU0GtHg--4nUzU';
-const DEST_SHEET_NAME     = 'BASE DE DADOS CADASTRAIS';
+const DEST_SPREADSHEET_ID = '1hgzpIBglmI088a3fngJCj9kF8yso-7uBa1kIXVUgL2E';
+const DEST_SHEET_NAME     = 'BASE DE DADOS CADASTRAIS'; // com ESPAÇOS
+/************** Code.gs — limpo e consolidado (com correções CEP + robustez no envio) **************/
 
-// ---------- Cabeçalho oficial ----------
+/* ========= Cabeçalho oficial =========
+ * Mantém TODOS os campos solicitados pelo usuário e adiciona os campos LGPD.
+ */
 const STANDARD_HEADER = [
+  // Campos originais
   'CARIMBO DE DATA/HORA','CURSO','LOCAL DO EVENTO','CICLO','STATUS',
   'NOME COMPLETO SEM ABREVIAÇÕES','CPF','E-MAIL','TEL/WHATSAPP',
   'ENDEREÇO','NÚMERO','COMPLEMENTO','BAIRRO','CEP','CIDADE','ESTADO','PAÍS',
   'PROFISSÃO','ESCOLARIDADE','GRADUAÇÃO',
-  // Novos campos LGPD/Consentimentos
+  // Novos campos LGPD/Consentimentos (obrigatórios neste projeto)
   'LGPD_VERSION','LGPD_TS','LGPD_IP','OPT-IN','CONSENTIMENTO DE IMAGEM'
 ];
 
-/// ---------- Helpers ----------
-const sanitize_ = s => (s || '').toString().trim();
-const onlyDigits_ = s => sanitize_(s).replace(/\D+/g, '');
-const norm_ = s => sanitize_(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+/* ========= Helpers utilitários ========= */
+const sanitize_ = s => (s || '').toString().trim();                       // Normaliza string
+const onlyDigits_ = s => sanitize_(s).replace(/\D+/g, '');                // Mantém apenas dígitos
+const norm_ = s => sanitize_(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); // Remove acentos
 
+function canon_(s){
+  return (s || '')
+    .toString()
+    .normalize('NFD')                // separa acentos
+    .replace(/[\u0300-\u036f]/g,'') // remove acentos
+    .toLowerCase()
+    .replace(/\s+/g,' ')            // colapsa espaços internos
+    .trim();
+}
+
+/* Valida e-mail simples */
 function isValidEmail_(email){ return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email); }
+
+/* Valida CEP (8 dígitos) */
 function isValidCEP_(cep){ return /^[0-9]{8}$/.test(onlyDigits_(cep)); }
+
+/* Valida UF (sigla) */
 function isValidUF_(uf){ return /^(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)$/i.test(sanitize_(uf)); }
+
+/* Valida telefone BR (10–13 dígitos, incluindo DDD) */
 function isValidPhoneBR_(phone){ const d=onlyDigits_(phone); return d.length>=10 && d.length<=13; }
+
+/* Valida CPF com dígitos verificadores */
 function isValidCPF_(cpf){
   const c=onlyDigits_(cpf);
   if(!/^\d{11}$/.test(c)) return false;
@@ -42,41 +65,48 @@ function isValidCPF_(cpf){
   let dv2=11-(s%11); dv2=dv2>9?0:dv2; return dv2=== +c[10];
 }
 
+/* Escapa HTML para segurança em e-mail */
 function escapeHtml_(s) {
   return String(s || '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+/* Formata CPF para 000.000.000-00 */
 function formatCPF_(c) {
   const d = onlyDigits_(c);
   if (d.length !== 11) return c || '';
   return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
 }
+
+/* Mascara CPF exibindo apenas os 2 últimos dígitos */
 function maskCPF_(c) {
   const d = onlyDigits_(c);
   if (d.length !== 11) return c || '';
   return `***.***.***-${d.slice(-2)}`;
 }
 
-/// ---------- Planilha base + cabeçalho (WRITE) ----------
+/* ========= Acesso e garantia de cabeçalho ========= */
+/* Obtém/Cria sheet e garante cabeçalho padrão */
 function getSheet_(sid, sheetName = SHEET_NAME) {
   const id = String(sid || '').trim();
   if (!id) throw new Error('Faltou o parâmetro "sid".');
   const ss = SpreadsheetApp.openById(id);
   let sh = ss.getSheetByName(sheetName);
-  if (!sh) sh = ss.insertSheet(sheetName); // cria em operações de escrita
-  ensureStandardHeader_(sh);
+  if (!sh) sh = ss.insertSheet(sheetName);       // Cria a aba se não existir
+  ensureStandardHeader_(sh);                      // Garante cabeçalho completo
   return sh;
 }
 
-/// ---------- Planilha apenas leitura (READ, NÃO CRIA) ----------
+/* Obtém sheet somente leitura (NÃO cria) */
 function getSheetForRead_(sid, sheetName = SHEET_NAME) {
   const id = String(sid || '').trim();
   if (!id) throw new Error('Faltou o parâmetro "sid".');
   const ss = SpreadsheetApp.openById(id);
-  return ss.getSheetByName(sheetName) || null; // não cria
+  return ss.getSheetByName(sheetName) || null;    // Não cria
 }
 
+/* Garante que todas as colunas de STANDARD_HEADER existam (preserva as atuais) */
 function ensureStandardHeader_(sh) {
   const lastCol = sh.getLastColumn();
   const lastRow = sh.getLastRow();
@@ -84,8 +114,10 @@ function ensureStandardHeader_(sh) {
   if (lastCol >= 1 && lastRow >= 1) {
     header = sh.getRange(1, 1, 1, lastCol).getValues()[0] || [];
   }
+
   const hasValues = header.some(v => String(v || '').trim() !== '');
   if (!hasValues) {
+    // Se estiver vazio, cria o cabeçalho inteiro de uma vez
     if (sh.getMaxColumns() < STANDARD_HEADER.length) {
       sh.insertColumnsAfter(sh.getMaxColumns() || 1, STANDARD_HEADER.length - (sh.getMaxColumns() || 1));
     }
@@ -93,6 +125,8 @@ function ensureStandardHeader_(sh) {
     sh.setFrozenRows(1);
     return;
   }
+
+  // Se já existir algo, acrescenta apenas as faltantes ao final (mantém a ordem atual)
   const existingNorm = header.map(h => norm_(h));
   STANDARD_HEADER.forEach(hWanted => {
     const wantedNorm = norm_(hWanted);
@@ -105,6 +139,7 @@ function ensureStandardHeader_(sh) {
   sh.setFrozenRows(1);
 }
 
+/* Utilitário manual para rodar no editor: verifica/ajusta o cabeçalho na planilha ativa */
 function runEnsureHeaderMaster() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(SHEET_NAME);
@@ -113,7 +148,7 @@ function runEnsureHeaderMaster() {
   SpreadsheetApp.getUi().alert('Cabeçalho verificado/ajustado.');
 }
 
-/// ---------- Map dinâmico ----------
+/* ========= Mapa dinâmico do cabeçalho (encontra colunas por nome/sinônimos) ========= */
 function headerMap_(header){
   const clean = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   const H = header.map(clean);
@@ -126,6 +161,7 @@ function headerMap_(header){
       return K.some(k => hasPhrase(h,k) || (k.split(' ').every(w => tokens.includes(w))));
     });
   };
+
   const map = {};
   map.timestamp   = findSmart('carimbo de data hora','timestamp');
   map.curso       = findSmart('curso');
@@ -148,7 +184,7 @@ function headerMap_(header){
   map.escolaridade= findSmart('escolaridade');
   map.graduacao   = findSmart('graduacao','curso academico','curso superior area','area de formacao','formacao curso');
 
-  // Novos campos LGPD/Consentimentos
+  // Campos LGPD/Consentimentos
   map.lgpdVersion = findSmart('lgpd version','lgpd_version');
   map.lgpdTs      = findSmart('lgpd ts','lgpd timestamp','lgpd data hora');
   map.lgpdIp      = findSmart('lgpd ip','ip');
@@ -158,22 +194,25 @@ function headerMap_(header){
   return map;
 }
 
-/// ---------- doGet ----------
+/* ========= doGet (Web App) =========
+ * Entrega o HTML "index" populando variáveis server-side (cursos, empresa, etc).
+ */
 function doGet(e) {
   const p = (e && e.parameter) || {};
   const sidParam = (p.sid || '').trim();
   const sid = sidParam || SID_DEFAULT;
   const sheet = (p.sheet || '').trim() || SHEET_NAME;
 
-  // --- página principal (index com modal) ---
-  const tpl = HtmlService.createTemplateFromFile('index');
+  const tpl = HtmlService.createTemplateFromFile('index');   // Template "index.html"
 
+  // Cursos padrão (apresentados no <select>)
   const defaultCourses = [
     'FORMAÇÃO BÁSICA EM TERAPIA CAPILAR',
     'FORMAÇÃO AVANÇADA EM TERAPIA CAPILAR',
     'PÓS-GRADUAÇÃO EM TRICOLOGIA E CIÊNCIA COSMÉTICA',
   ];
 
+  // Parser de ?cursos= (array JSON, ou separados por | ,)
   function parseCursosParam_(raw) {
     const s = String(raw || '').trim();
     if (!s) return null;
@@ -191,8 +230,7 @@ function doGet(e) {
   const cursosParam = parseCursosParam_(p.cursos);
   const cursosList  = (Array.isArray(cursosParam) && cursosParam.length) ? cursosParam : defaultCourses;
 
-  // Injeta variáveis do servidor
-  // IMPORTANTE: aqui deixamos como array; o index.html fará JSON.stringify(cursos)
+  // Injeta variáveis no template (acessível via window.SERVER)
   tpl.cursos    = cursosList;
   tpl.sid       = sid;
   tpl.sheet     = sheet;
@@ -206,7 +244,9 @@ function doGet(e) {
             .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-/// ---------- CEP ----------
+/* ========= CEP Lookup =========
+ * Tenta ViaCEP; se falhar, usa BrasilAPI como fallback.
+ */
 function cepLookup(cepRaw){
   const cep = onlyDigits_(cepRaw);
   if (!/^\d{8}$/.test(cep)) {
@@ -259,12 +299,15 @@ function cepLookup(cepRaw){
   return { ok:false, message:'Não foi possível obter o endereço no momento.' };
 }
 
-/// ---------- Salvar ----------
 function salvarInscricao(dados) {
+  const TRACE = true; // <- deixe true nos testes; depois pode desligar
+  const tlog = (...x) => { if (TRACE) Logger.log('[salvarInscricao] ' + x.join(' ')); };
+
   try {
     if (!dados) throw new Error('Nenhum dado recebido.');
 
-    const sid           = sanitize_(dados.sid);
+    // ------------------- Coleta/validação -------------------
+    const sid           = sanitize_(dados.sid) || SID_DEFAULT;
     const sheetName     = sanitize_(dados.sheet) || SHEET_NAME;
 
     const curso         = sanitize_(dados.curso);
@@ -290,18 +333,17 @@ function salvarInscricao(dados) {
     const escolaridade  = sanitize_(dados.escolaridade);
     const graduacao     = sanitize_(dados.graduacao);
 
-    // LGPD + consentimentos (novos campos)
+    // LGPD + consentimentos
     const lgpdVersion   = sanitize_(dados.lgpdVersion);
     const lgpdTs        = sanitize_(dados.lgpdTs);
     const lgpdIp        = sanitize_(dados.lgpdIp);
     const optin         = String(dados.optin) === 'on' ? 'SIM' : '';
     const consentImagem = String(dados.consentImagem) === 'on' ? 'SIM' : '';
 
-    // LGPD obrigatório (checkbox principal)
     const lgpdOk = String(dados.lgpd) === 'on';
     if (!lgpdOk) throw new Error('Você precisa aceitar a Política de Privacidade (LGPD) para continuar.');
 
-    // Validações
+    // Validações básicas
     if (!curso) throw new Error('Informe o curso.');
     if (!localEvento) throw new Error('Informe o local do evento.');
     if (!nomeCompleto) throw new Error('Informe seu nome completo.');
@@ -315,11 +357,10 @@ function salvarInscricao(dados) {
     if (!isValidUF_(estado)) throw new Error('Estado inválido.');
     if (!profissao) throw new Error('Informe sua profissão.');
     if (!escolaridade) throw new Error('Selecione sua escolaridade.');
-
     const exigeGraduacao = ['Ensino Superior Completo (Graduação)','Pós-graduação','Mestrado','Doutorado'].includes(escolaridade);
     if (exigeGraduacao && !graduacao) throw new Error('Informe sua Graduação (curso superior).');
 
-    // Planilha e mapa
+    // ------------------- Acessa planilha + mapeia colunas -------------------
     const sh = getSheet_(sid, sheetName);
     const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0] || [];
     const map = headerMap_(header);
@@ -328,39 +369,74 @@ function salvarInscricao(dados) {
       throw new Error('Colunas essenciais ausentes: E-MAIL, CPF ou CURSO.');
     }
 
-    let values = [];
-    if (sh.getLastRow() > 1) {
-      values = sh.getRange(2,1, sh.getLastRow()-1, sh.getLastColumn()).getValues();
-    }
+    const lastRowBefore = sh.getLastRow();
+    const lastCol = sh.getLastColumn();
+    const values = lastRowBefore > 1 ? sh.getRange(2,1,lastRowBefore-1,lastCol).getValues() : [];
 
-    // Regra de duplicidade
-    const eq = (a,b) => String(a||'').trim().toLowerCase() === String(b||'').trim().toLowerCase();
-    const sameInscricaoExists = values.some(r => {
-      const alunoIgual = eq(r[map.email], email) || (onlyDigits_(r[map.cpf]) === cpf);
-      const cursoIgual = eq(r[map.curso], curso);
-      const cicloIgual = (map.ciclo > -1) ? eq(r[map.ciclo], ciclo) : false;
-      const localIgual = (map.local > -1) ? eq(r[map.local], localEvento) : false;
-      const mesmoEvento = ciclo ? cicloIgual : localIgual;
-      return alunoIgual && cursoIgual && (cicloIgual || localIgual || mesmoEvento);
+    // ------------------- Regra de duplicidade -------------------
+    const alunoEmailKey = (email || '').trim().toLowerCase();
+    const alunoCpfKey   = cpf;
+
+    const curIn = canon_(curso);
+    const cicIn = canon_(ciclo);
+    const locIn = canon_(localEvento);
+
+    tlog('checar duplicidade ->',
+      JSON.stringify({curso, ciclo, localEvento, email: alunoEmailKey, cpf: alunoCpfKey})
+    );
+
+    const posicoesDuplicadas = [];
+    values.forEach((r, i) => {
+      const emailRow = String(r[map.email] || '').trim().toLowerCase();
+      const cpfRow   = onlyDigits_(r[map.cpf]);
+      const alunoIgual = (!!alunoEmailKey && emailRow === alunoEmailKey) || (!!alunoCpfKey && cpfRow === alunoCpfKey);
+
+      const curRow = canon_(r[map.curso]);
+      const cursoIgual = curRow === curIn;
+
+      const cicRow = (map.ciclo > -1) ? canon_(r[map.ciclo]) : '';
+      const locRow = (map.local > -1) ? canon_(r[map.local]) : '';
+
+      const ambosTemCiclo = !!cicIn && !!cicRow;
+      const ambosSemCiclo = !cicIn && !cicRow;
+
+      const mesmoEvento =
+        (ambosTemCiclo && cicRow === cicIn) ||
+        (ambosSemCiclo && !!locIn && !!locRow && locRow === locIn);
+
+      if (alunoIgual && cursoIgual && mesmoEvento) posicoesDuplicadas.push(i);
     });
 
-    if (sameInscricaoExists) {
+    tlog('duplicadosEncontrados:', JSON.stringify(posicoesDuplicadas));
+
+    const isDuplicado = posicoesDuplicadas.length > 0;
+
+    if (isDuplicado) {
       if (String(dados.atualizarDados) === 'on') {
         atualizarDadosAluno_(sh, header, values, {
           cpf, email, whatsapp, endereco, numero, complemento, bairro, cep, cidade, estado, pais,
           profissao, escolaridade, graduacao, nomeCompleto, localEvento, ciclo, status,
-          // novos
           lgpdVersion, lgpdTs, lgpdIp, optin, consentImagem
-        });
-        return { ok: true, message: 'Dados atualizados para inscrições existentes deste aluno.' };
+        }, posicoesDuplicadas);
+
+        return {
+          ok: true,
+          updated: true,
+          appended: false,
+          message: 'Dados atualizados na inscrição já existente deste curso/evento.',
+          sidUsed: sid,
+          sheetUsed: sheetName,
+          lastRowBefore
+        };
       }
-      throw new Error('Já existe uma inscrição deste aluno para este evento (mesmo curso e mesmo ciclo/local).');
+      throw new Error('Já existe uma inscrição deste aluno para este mesmo curso e evento.');
     }
 
-    // Monta linha
-    const row = new Array(sh.getLastColumn()).fill('');
+    // ------------------- Monta e salva a nova linha -------------------
+    const row = new Array(lastCol).fill('');
     const put = (idx, val) => { if (idx !== -1 && idx !== undefined) row[idx] = val; };
 
+    // carimbo
     if (map.timestamp === 0 || /carimbo de data\/hora/i.test(String(header[0] || ''))) {
       row[0] = new Date();
     }
@@ -384,8 +460,6 @@ function salvarInscricao(dados) {
     put(map.profissao, profissao);
     put(map.escolaridade, escolaridade);
     put(map.graduacao, exigeGraduacao ? graduacao : '');
-
-    // Novos campos LGPD/Consentimentos
     put(map.lgpdVersion, lgpdVersion);
     put(map.lgpdTs,      lgpdTs);
     put(map.lgpdIp,      lgpdIp);
@@ -393,11 +467,17 @@ function salvarInscricao(dados) {
     put(map.consentImg,  consentImagem);
 
     sh.appendRow(row);
+    SpreadsheetApp.flush();
 
-    // Espelho (não impede sucesso se falhar)
+    const lastRowAfter = sh.getLastRow();
+    const appended = lastRowAfter > lastRowBefore;
+
+    tlog('appendRow:', JSON.stringify({lastRowBefore, lastRowAfter, appended}));
+
+    // ------------------- Espelho (best-effort) -------------------
     try { mirrorToSecondary_(header, row); } catch(e) { Logger.log('Falha ao espelhar: ' + e); }
 
-    // E-mail (opcional — não bloqueia)
+    // ------------------- E-mail (best-effort) -------------------
     try {
       const templateEmail = HtmlService.createHtmlOutputFromFile('email').getContent();
       const cpfFormatado = formatCPF_(cpf);
@@ -421,17 +501,27 @@ function salvarInscricao(dados) {
       });
     } catch(e) { Logger.log('Falha ao enviar e-mail: ' + e); }
 
-    return { ok: true, message: 'Inscrição registrada com sucesso!' };
+    return {
+      ok: true,
+      message: 'Inscrição registrada com sucesso!',
+      updated: false,
+      appended,
+      sidUsed: sid,
+      sheetUsed: sheetName,
+      rowNumber: appended ? lastRowAfter : null
+    };
 
   } catch (err) {
-    Logger.log('ERRO em salvarInscricao: ' + (err.stack || err));
+    Logger.log('ERRO em salvarInscricao (trace): ' + (err.stack || err));
     return { ok: false, message: err && err.message ? err.message : 'Ocorreu um erro no servidor.' };
   }
 }
 
-/// ---------- Atualizar ----------
-function atualizarDadosAluno_(sh, header, values, campos) {
+
+
+function atualizarDadosAluno_(sh, header, values, campos, posicoesAlvoOpt) {
   const map = headerMap_(header);
+
   const updates = {};
   if (map.nome        > -1) updates[map.nome]        = campos.nomeCompleto;
   if (map.local       > -1) updates[map.local]       = campos.localEvento;
@@ -454,7 +544,6 @@ function atualizarDadosAluno_(sh, header, values, campos) {
   if (map.whatsapp    > -1) updates[map.whatsapp]    = campos.whatsapp;
   if (map.email       > -1) updates[map.email]       = campos.email;
 
-  // Novos (LGPD/Consentimentos)
   if (map.lgpdVersion > -1) updates[map.lgpdVersion] = campos.lgpdVersion;
   if (map.lgpdTs      > -1) updates[map.lgpdTs]      = campos.lgpdTs;
   if (map.lgpdIp      > -1) updates[map.lgpdIp]      = campos.lgpdIp;
@@ -464,12 +553,35 @@ function atualizarDadosAluno_(sh, header, values, campos) {
   const startRow = 2;
   const lastCol = sh.getLastColumn();
 
-  const isMatch = (row) =>
-    (map.cpf   > -1 && onlyDigits_(row[map.cpf])   === campos.cpf) ||
-    (map.email > -1 && String(row[map.email]).trim().toLowerCase() === campos.email);
+  // Key de evento para limitar o update ao mesmo curso/evento
+  const curIn = canon_(campos.curso || ''); // pode não vir; então derivamos via posicoesAlvoOpt
+  const cicIn = canon_(campos.ciclo || '');
+  const locIn = canon_(campos.localEvento || '');
+
+  const shouldUpdate = (row, idx) => {
+    // Se passamos posicoesAlvoOpt (indices duplicados), use-os diretamente
+    if (Array.isArray(posicoesAlvoOpt) && posicoesAlvoOpt.includes(idx)) return true;
+
+    // Senão, garante que é o mesmo aluno + mesmo curso + mesmo evento
+    const cpfMatch   = (map.cpf > -1)   && (onlyDigits_(row[map.cpf]) === campos.cpf);
+    const emailMatch = (map.email > -1) && (String(row[map.email]).trim().toLowerCase() === campos.email);
+    const alunoMatch = cpfMatch || emailMatch;
+
+    const cursoMatch = (map.curso > -1) && (canon_(row[map.curso]) === curIn);
+    const cicRow = (map.ciclo > -1) ? canon_(row[map.ciclo]) : '';
+    const locRow = (map.local > -1) ? canon_(row[map.local]) : '';
+
+    const ambosTemCiclo = !!cicIn && !!cicRow;
+    const ambosSemCiclo = !cicIn && !cicRow;
+    const eventoMatch =
+      (ambosTemCiclo && cicRow === cicIn) ||
+      (ambosSemCiclo && !!locIn && !!locRow && locRow === locIn);
+
+    return alunoMatch && cursoMatch && eventoMatch;
+  };
 
   values.forEach((row, i) => {
-    if (!isMatch(row)) return;
+    if (!shouldUpdate(row, i)) return;
     let changed = false;
     Object.keys(updates).forEach(k => {
       const col = Number(k);
@@ -483,7 +595,8 @@ function atualizarDadosAluno_(sh, header, values, campos) {
   });
 }
 
-/// ---------- Busca por CPF ----------
+
+/* ========= Busca por CPF (sheet principal + espelho) ========= */
 function findAlunoByCPFInSheet_(sid, sheetName, cpfDigits){
   const sh = getSheetForRead_(sid, sheetName);
   if (!sh) return { ok:false, message:`Aba "${sheetName}" não encontrada no SID ${sid}.` };
@@ -522,6 +635,7 @@ function findAlunoByCPFInSheet_(sid, sheetName, cpfDigits){
         escolaridade:get(map.escolaridade),
         graduacao:   get(map.graduacao),
       };
+      // Heurística para número (se veio embutido no logradouro)
       if (!out.numero && out.endereco) {
         const m = String(out.endereco).match(/,\s*([\w\-\/]+)\s*$/);
         if (m) out.numero = m[1];
@@ -532,6 +646,7 @@ function findAlunoByCPFInSheet_(sid, sheetName, cpfDigits){
   return { ok:false, message:'Nenhum cadastro encontrado para este CPF.' };
 }
 
+/* Expõe busca por CPF ao front */
 function buscarAlunoPorCPF(opts) {
   try {
     const sid   = sanitize_(opts && opts.sid);
@@ -555,7 +670,8 @@ function buscarAlunoPorCPF(opts) {
   }
 }
 
-/// ---------- Espelho ----------
+/* ========= Espelhamento ========= */
+/* Mapeia chaves lógicas -> índices */
 function headerLogicalMap_(headerArr){
   const map = headerMap_(headerArr);
   return {
@@ -564,12 +680,13 @@ function headerLogicalMap_(headerArr){
     endereco: map.endereco, numero: map.numero, complemento: map.complemento, bairro: map.bairro,
     cep: map.cep, cidade: map.cidade, estado: map.estado, pais: map.pais,
     profissao: map.profissao, escolaridade: map.escolaridade, graduacao: map.graduacao,
-    // Novos
+    // LGPD/Consentimentos
     lgpdVersion: map.lgpdVersion, lgpdTs: map.lgpdTs, lgpdIp: map.lgpdIp,
     optin: map.optin, consentImg: map.consentImg,
   };
 }
 
+/* Constrói linha de saída para o destino, alinhando colunas por nome */
 function buildRowForDest_(destHeader, sourceHeader, sourceRow){
   const srcMap = headerLogicalMap_(sourceHeader);
   const dstMap = headerLogicalMap_(destHeader);
@@ -579,22 +696,27 @@ function buildRowForDest_(destHeader, sourceHeader, sourceRow){
     const dstIdx = dstMap[key];
     if (dstIdx > -1 && srcIdx > -1) out[dstIdx] = sourceRow[srcIdx];
   };
+
+  // Carimbo destino (se necessário)
   put('timestamp');
   if ((dstMap.timestamp === 0 || /carimbo de data\/hora/i.test(String(destHeader[0]||''))) && !out[0]) {
     out[0] = new Date();
   }
+
+  // Campos comuns
   put('curso'); put('local'); put('ciclo'); put('status');
   put('nome'); put('cpf'); put('email'); put('whatsapp');
   put('endereco'); put('numero'); put('complemento'); put('bairro');
   put('cep'); put('cidade'); put('estado'); put('pais');
   put('profissao'); put('escolaridade'); put('graduacao');
 
-  // Novos campos
+  // LGPD/Consentimentos
   put('lgpdVersion'); put('lgpdTs'); put('lgpdIp'); put('optin'); put('consentImg');
 
   return out;
 }
 
+/* Obtém aba de destino garantindo cabeçalho completo */
 function getDestSheet_() {
   const ss = SpreadsheetApp.openById(DEST_SPREADSHEET_ID);
   let sh = ss.getSheetByName(DEST_SHEET_NAME);
@@ -603,6 +725,7 @@ function getDestSheet_() {
   return sh;
 }
 
+/* Aplica espelhamento da nova linha para a planilha secundária */
 function mirrorToSecondary_(sourceHeader, newRow){
   if (!DEST_SPREADSHEET_ID) return;
   const destSh = getDestSheet_();
