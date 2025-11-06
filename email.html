@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+  <body style="font-family:Arial,Helvetica,sans-serif; color:#111; line-height:1.6; margin:0; padding:0;">
+    <div style="max-width:640px; margin:0 auto; padding:24px;">
+      <p>Olá {{NOME}},</p>
+
+      <p>Recebemos sua inscrição no <strong>Programa de Certificações {{NOME_EMPRESA}}</strong>.</p>
+
+      <div style="margin:18px 0; padding:16px; border:1px solid #e5e5e5; border-radius:8px; background:#fafafa;">
+        <p style="margin:0 0 10px;"><strong>Confirme seus dados:</strong></p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%; border-collapse:collapse;">
+          <tr>
+            <td style="padding:6px 0; width:40%; color:#555;">Nome completo</td>
+            <td style="padding:6px 0;"><strong>{{NOME_COMPLETO}}</strong></td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0; color:#555;">CPF</td>
+            <td style="padding:6px 0;"><strong>{{CPF_MASK}}</strong></td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0; color:#555;">Curso inscrito</td>
+            <td style="padding:6px 0;"><strong>{{CURSO}}</strong></td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0; color:#555;">Local do evento</td>
+            <td style="padding:6px 0;"><strong>{{LOCAL_EVENTO}}</strong></td>
+          </tr>
+                  </table>
+      </div>
+
+      <p>Agradecemos sua matrícula! Seus dados foram registrados com sucesso.</p>
+      <p>Em breve, enviaremos novas informações sobre cronogramas e orientações.</p>
+
+      <p>Atenciosamente,<br><strong>{{NOME_EMPRESA}}</strong></p>
+
+      <hr style="border:none; border-top:1px solid #eee; margin:20px 0;">
+      <small style="color:#666;">Se você não realizou esta inscrição, por favor, ignore este e-mail.</small>
+    </div>
+  </body>
+</html>
+
+
