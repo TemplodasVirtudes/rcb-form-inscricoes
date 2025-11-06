@@ -291,8 +291,8 @@
     window.__LGPD_MODAL_INIT__ = true;
 
     // <<< PERSONALIZE AQUI >>>
-    const LGPD_VERSION = 'VERSAO_DA_POLITICA';   // ex.: '2025-11-04'
-    const LGPD_PDF_URL = 'PDF_URL_DO_DRIVE';     // link público do Drive
+    const LGPD_VERSION = '2025-11-04'; // alinhar com o input hidden
+const LGPD_PDF_URL = '<<cole aqui o link público do PDF no Drive>>';
     const LGPD_STORAGE_KEY = 'lgpdAcceptedVersion';
 
     function safeSetAttr(el, name, value){
@@ -599,7 +599,7 @@
       const email=document.getElementById('email').value.trim();
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email)) ok=false;
       const wDigits=onlyDigits(document.getElementById('whatsapp').value);
-      if(wDigits.length<10 || wDigits.length>11) ok=false;
+      if(wDigits.length<10 || wDigits.length>13) ok=false;
       const cepDigits=onlyDigits(document.getElementById('cep').value);
       if(cepDigits.length!==8) ok=false;
       const uf=document.getElementById('estado').value.trim().toUpperCase();
