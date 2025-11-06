@@ -1,0 +1,749 @@
+<!-- INDEX.HTML — formulário com Política (LGPD) em modal inline -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title><?!= pageTitle ?></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root{--bg:#1A1A1A;--card:#232323;--text:#e7ecff;--muted:#9bb0ff;--acc:#2d60dd;--err:#ff6b6b;--ok:#28a745}
+    html,body{height:100%}
+    body{margin:0;font-family:Calibri,system-ui,-apple-system,'Segoe UI',Roboto,Ubuntu,sans-serif;color:var(--text);background:var(--bg)}
+    .wrap{max-width:880px;margin:24px auto;padding:24px}
+    .card{background:var(--card);border:1px solid #2f2f2f;border-radius:16px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+
+    h1{margin:0 0 8px;font-size:22px;font-weight:600}
+    .lead{color:var(--muted);margin-top:0}
+
+    form{display:grid;gap:14px;grid-template-columns:repeat(12,1fr)}
+    .col-12{grid-column:span 12}.col-8{grid-column:span 8}.col-6{grid-column:span 6}.col-5{grid-column:span 5}.col-4{grid-column:span 4}.col-2{grid-column:span 2}
+
+    label{display:block;margin:16px 0 6px;font-weight:600}
+
+    /* Inputs comuns (exclui checkbox/radio) */
+    input:not([type="checkbox"]):not([type="radio"]), select{
+      width:100%;box-sizing:border-box;padding:14px 12px;background:var(--card);color:var(--text);
+      border:1px solid #444;border-radius:8px;outline:none;transition:.15s
+    }
+    input:focus:not([type="checkbox"]):not([type="radio"]), select:focus{
+      border-color:var(--acc);box-shadow:0 0 0 3px rgba(45,96,221,.18)
+    }
+    /* Reset checkbox para alinhar ao texto */
+    input[type="checkbox"]{width:auto;height:auto;padding:0;margin:0;border:none;box-shadow:none;background:transparent;appearance:auto}
+
+    .help{font-size:13px;color:var(--muted);margin-top:4px}
+    .error{color:var(--err);font-size:14px;margin-top:6px}
+    .invalid{border-color:var(--err)!important;box-shadow:0 0 0 3px rgba(255,107,107,.15)!important}
+    button{background:var(--acc);color:#fff;border:none;padding:14px;border-radius:10px;font-weight:800;cursor:pointer;width:100%}
+    .success-message{font-size:1.05em;padding:14px;background:var(--ok);color:#fff;border-radius:10px;text-align:center;margin-top:16px;display:none}
+
+    .banner{padding:12px 14px;border-radius:10px;margin:12px 0 0;font-size:14px;border:1px solid #3a3a3a}
+    .banner.info{background:rgba(45,96,221,.12);border-color:#3956d4}
+    .banner.warn{background:rgba(255,200,0,.12);border-color:#b58900}
+    .banner.success{background:rgba(40,167,69,.12);border-color:#2b8a3e}
+
+    .header-img{margin-bottom:16px;border-radius:12px;overflow:hidden;border:1px solid #2f2f2f;height:220px}
+    .header-img img{display:block;width:100%;height:100%;object-fit:cover}
+
+    @media (min-width: 761px){ label{display:flex;align-items:flex-end;min-height:40px;margin:0 0 6px;line-height:1.2} }
+    @media (max-width: 760px){
+      label{min-height:0;align-items:normal;margin:16px 0 6px}
+      .col-12,.col-8,.col-6,.col-5,.col-4,.col-2{grid-column:span 12}
+    }
+
+    .btn-ghost{background:transparent;border:1px solid #3a56d9;color:#cdd7ff;padding:10px 12px;border-radius:10px;font-weight:700;cursor:pointer;width:auto}
+    #prefillNote{margin-top:8px}
+    #prefillNote.info{color:#9bb0ff} #prefillNote.warn{color:#f6d365} #prefillNote.ok{color:#8be28f}
+
+    .consent-group{grid-column:1 / -1; display:grid; gap:10px; grid-template-columns:repeat(12,1fr)}
+    @media (min-width: 861px){ .consent-col{grid-column: span 6;} .consent-col.wide{grid-column: span 12;} }
+    @media (max-width: 860px){ .consent-col{grid-column: span 12;} }
+
+    #form .chk-row{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid #343a52;border-radius:10px;background:rgba(255,255,255,.02);transition:border-color .15s ease, background .15s ease}
+    #form .chk-row label.inline{display:flex;align-items:flex-start;gap:10px;cursor:pointer;flex-wrap:wrap;margin:0}
+    #form .chk-row input[type="checkbox"]{margin-top:2px;flex:0 0 auto}
+    #form .chk-row .inline span{flex:1 1 auto;min-width:0;word-break:break-word}
+    #form .chk-row:hover{border-color:#3d4670;background:rgba(45,96,221,.05)}
+    #form .chk-row:focus-within{outline:2px solid rgba(45,96,221,.6);outline-offset:2px;border-color:#2d60dd;background:rgba(45,96,221,.08)}
+    #form .chk-row a{color:#aebcff;text-decoration: underline dotted;text-underline-offset:3px}
+    #form .chk-row a:hover{color:#d7e0ff;text-decoration: underline}
+
+    #estado{min-width:96px}
+
+    /* ===== Modal LGPD ===== */
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:9999}
+    .modal[aria-hidden="false"]{display:flex}
+    .modal .box{background:#232323;border:1px solid #2f2f2f;border-radius:14px;max-width:840px;width:92%;padding:16px}
+    .modal .content{max-height:60vh;overflow:auto;margin-top:8px}
+
+    /* Botão X do modal */
+    .modal .close{
+      padding: 2px 6px;
+      font-size: 16px;
+      line-height: 1;
+      border-radius: 6px;
+      border: 1px solid #3a3a3a;
+      background: transparent;
+      color: #e7ecff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="header-img"><img id="headerImg" src="https://i.imgur.com/3Up1nXp.jpeg" alt="Cabeçalho"></div>
+      <h1 id="pageTitle"><?!= pageTitle ?></h1>
+      <p class="lead">Preencha seus dados corretamente para emissão do certificado.</p>
+
+      <form id="form" novalidate>
+        <input type="hidden" name="sid" id="sid">
+        <input type="hidden" name="sheet" id="sheet">
+        <input type="hidden" name="empresa" id="empresa">
+        <input type="hidden" name="coord" id="coord">
+        <input type="hidden" id="ciclo" name="ciclo" value="">
+        <input type="hidden" id="status" name="status" value="">
+
+        <div class="col-12">
+          <label for="curso">Curso *</label>
+          <select id="curso" name="curso" required>
+            <option value="">Selecione...</option>
+          </select>
+          <div class="field-msg" id="msg-curso"></div>
+        </div>
+
+        <div class="col-8">
+          <label for="localEvento">Local do evento *</label>
+          <input type="text" id="localEvento" name="localEvento" required>
+          <div class="field-msg" id="msg-localEvento"></div>
+        </div>
+
+        <div class="col-12">
+          <label for="nome">Nome completo (sem abreviações) *</label>
+          <input type="text" id="nome" name="nome" autocomplete="name" required>
+          <div class="field-msg" id="msg-nome"></div>
+        </div>
+
+        <div class="col-6">
+          <label for="cpf">CPF (somente números) *</label>
+          <input type="text" id="cpf" name="cpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" autocomplete="off" required>
+          <div class="help">11 dígitos. Máscara aplicada automaticamente.</div>
+          <div class="field-msg" id="msg-cpf"></div>
+        </div>
+
+        <div class="col-12" id="prefillArea">
+          <button type="button" id="btnPrefill" class="btn-ghost">Já sou aluno(a) — preencher automaticamente</button>
+          <div id="prefillNote" class="help"></div>
+        </div>
+
+        <div class="col-6">
+          <label for="email">E-mail *</label>
+          <input type="email" id="email" name="email" placeholder="seu@exemplo.com" autocomplete="email" required>
+          <div class="field-msg" id="msg-email"></div>
+        </div>
+
+        <div class="col-6">
+          <label for="whatsapp">WhatsApp (com DDD) *</label>
+          <input type="tel" id="whatsapp" name="whatsapp" inputmode="tel" maxlength="15" placeholder="(11) 99999-9999" autocomplete="tel-national" required>
+          <div class="help">10 ou 11 dígitos. Máscara aplicada automaticamente.</div>
+          <div class="field-msg" id="msg-whatsapp"></div>
+        </div>
+
+        <div class="col-6">
+          <label for="cep">CEP (somente números) *</label>
+          <input type="text" id="cep" name="cep" inputmode="numeric" maxlength="9" placeholder="00000-000" autocomplete="postal-code" required>
+          <div id="helpCep" class="help"></div>
+          <div class="field-msg" id="msg-cep"></div>
+        </div>
+
+        <div class="col-8">
+          <label for="endereco">Endereço (logradouro) *</label>
+          <input type="text" id="endereco" name="endereco" required>
+          <div class="field-msg" id="msg-endereco"></div>
+        </div>
+        <div class="col-4">
+          <label for="numero">Número *</label>
+          <input type="text" id="numero" name="numero" required>
+          <div class="field-msg" id="msg-numero"></div>
+        </div>
+
+        <div class="col-6">
+          <label for="complemento">Complemento</label>
+          <input type="text" id="complemento" name="complemento">
+        </div>
+        <div class="col-6">
+          <label for="bairro">Bairro</label>
+          <input type="text" id="bairro" name="bairro">
+        </div>
+
+        <div class="col-5">
+          <label for="cidade">Cidade *</label>
+          <input type="text" id="cidade" name="cidade" required>
+          <div class="field-msg" id="msg-cidade"></div>
+        </div>
+        <div class="col-2">
+          <label for="estado">Estado (UF) *</label>
+          <select id="estado" name="estado" required>
+            <option value="">Selecione...</option>
+            <option>AC</option><option>AL</option><option>AP</option><option>AM</option>
+            <option>BA</option><option>CE</option><option>DF</option><option>ES</option>
+            <option>GO</option><option>MA</option><option>MT</option><option>MS</option>
+            <option>MG</option><option>PA</option><option>PB</option><option>PR</option>
+            <option>PE</option><option>PI</option><option>RJ</option><option>RN</option>
+            <option>RS</option><option>RO</option><option>RR</option><option>SC</option>
+            <option>SP</option><option>SE</option><option>TO</option>
+          </select>
+          <div class="field-msg" id="msg-estado"></div>
+        </div>
+        <div class="col-5">
+          <label for="pais">País *</label>
+          <input type="text" id="pais" name="pais" placeholder="Brasil" autocomplete="country-name" required>
+          <div class="field-msg" id="msg-pais"></div>
+        </div>
+
+        <div class="col-6">
+          <label for="profissao">Profissão *</label>
+          <input type="text" id="profissao" name="profissao" required>
+          <div class="field-msg" id="msg-profissao"></div>
+        </div>
+        <div class="col-6">
+          <label for="escolaridade">Escolaridade *</label>
+          <select id="escolaridade" name="escolaridade" required>
+            <option value="">Selecione...</option>
+            <option>Ensino Fundamental Completo</option>
+            <option>Ensino Médio Completo</option>
+            <option>Ensino Superior Completo (Graduação)</option>
+            <option>Pós-graduação</option>
+            <option>Mestrado</option>
+            <option>Doutorado</option>
+          </select>
+          <div class="field-msg" id="msg-escolaridade"></div>
+        </div>
+
+        <div class="col-12" id="blocoGraduacao" style="display:none;">
+          <label for="graduacao">Graduação (curso superior) *</label>
+          <input type="text" id="graduacao" name="graduacao" placeholder="ex.: Biomedicina, Fisioterapia, Estética...">
+          <div class="help">Preencha apenas se marcou Graduação, Pós, Mestrado ou Doutorado.</div>
+          <div class="field-msg" id="msg-graduacao"></div>
+        </div>
+
+        <div class="col-12 chk-row">
+          <label class="inline">
+            <input type="checkbox" id="atualizarDados" name="atualizarDados">
+            <span>Já tenho cadastro; atualizar meus dados.</span>
+          </label>
+        </div>
+
+        <!-- CONSENTIMENTOS -->
+        <div class="consent-group">
+          <div class="col-12 chk-row consent-col wide">
+            <label class="inline" style="margin:0;display:flex;gap:10px;align-items:flex-start">
+              <input type="checkbox" id="lgpd" name="lgpd" required>
+              <span>
+                Li e concordo com a
+                <a href="#" id="linkLGPD">Política de Privacidade</a>
+                referente ao curso <strong id="lgpdCurso">selecionado</strong>.
+              </span>
+            </label>
+          </div>
+
+          <div class="col-12 chk-row consent-col">
+            <label class="inline">
+              <input type="checkbox" id="optin" name="optin">
+              <span>Quero receber comunicações sobre a ABT por e-mail/WhatsApp. <small>(opcional)</small></span>
+            </label>
+          </div>
+
+          <div class="col-12 chk-row consent-col">
+            <label class="inline">
+              <input type="checkbox" id="consentImagem" name="consentImagem">
+              <span>Autorizo o uso da minha imagem/voz em materiais institucionais. <small>(opcional)</small></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Log LGPD oculto -->
+        <input type="hidden" id="lgpdVersion" name="lgpdVersion" value="2025-11-04">
+        <input type="hidden" id="lgpdTs" name="lgpdTs" value="">
+        <input type="hidden" id="lgpdIp" name="lgpdIp" value="">
+
+        <div class="col-12">
+          <button type="submit">Enviar inscrição</button>
+          <div id="msg" class="help"></div>
+          <div id="err" class="error"></div>
+        </div>
+      </form>
+
+      <div id="successCard" class="success-message" role="status" aria-live="polite" aria-atomic="true">Inscrição feita com sucesso! Você receberá um e-mail de confirmação.</div>
+    </div>
+  </div>
+
+  <!-- ====== SCRIPT DO MODAL LGPD (único) – v2 ====== -->
+  <script>
+  (function onReady(fn){
+    if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(fn,0);
+    else document.addEventListener('DOMContentLoaded', fn, { once:true });
+  })(function initLGPDModalOnce(){
+    if (window.__LGPD_MODAL_INIT__) return;
+    window.__LGPD_MODAL_INIT__ = true;
+
+    // <<< PERSONALIZE AQUI >>>
+    const LGPD_VERSION = 'VERSAO_DA_POLITICA';   // ex.: '2025-11-04'
+    const LGPD_PDF_URL = 'PDF_URL_DO_DRIVE';     // link público do Drive
+    const LGPD_STORAGE_KEY = 'lgpdAcceptedVersion';
+
+    function safeSetAttr(el, name, value){
+      if (el && typeof el.setAttribute === 'function') el.setAttribute(name, value);
+    }
+
+    function ensureLGPDModalExists(){
+      let modal = document.getElementById('lgpdModal');
+      if (modal) return modal;
+
+      modal = document.createElement('div');
+      modal.id = 'lgpdModal';
+      modal.className = 'modal';
+      modal.setAttribute('role','dialog');
+      modal.setAttribute('aria-hidden','true');
+      modal.setAttribute('aria-modal','true');
+      modal.setAttribute('aria-labelledby','lgpdTitle');
+      modal.dataset.version = LGPD_VERSION;
+
+      modal.innerHTML = [
+        '<div class="box">',
+          '<header style="display:flex;align-items:center;justify-content:space-between;gap:12px">',
+            '<strong id="lgpdTitle">Política de Privacidade — <span id="lgpdCursoInModal">Curso</span></strong>',
+            '<button class="close" aria-label="Fechar" id="closeLGPD" type="button">×</button>',
+          '</header>',
+          '<div class="content">',
+            '<p>Este formulário coleta os dados necessários para gestão das inscrições e certificação.</p>',
+            '<ul>',
+              '<li><strong>Dados coletados:</strong> identificação, contato, endereço, formação/escolaridade e logs (data/hora e IP).</li>',
+              '<li><strong>Finalidade:</strong> processar a inscrição, comunicação institucional e emissão de certificados.</li>',
+              '<li><strong>Base legal (LGPD):</strong> execução de contrato/atos preliminares e legítimo interesse (marketing apenas com consentimento).</li>',
+              '<li><strong>Compartilhamento:</strong> ABT/CONSEBE, <em>coordenadores credenciados e seus prepostos</em> (funcionários/terceiros), exclusivamente para viabilizar o curso/certificação, sob aditivo LGPD e cláusulas de confidencialidade, além de provedores essenciais (banco, plataforma, e-mail, nuvem).</li>',
+              '<li><strong>Retenção:</strong> pelo período necessário ao contrato e obrigações legais (mín. 5 anos para registros acadêmicos/contratuais).</li>',
+              '<li><strong>Direitos do titular:</strong> confirmação, acesso, correção, anonimização/eliminação (quando aplicável), portabilidade, revogação de consentimentos.</li>',
+              '<li><strong>DPO:</strong> <a href="mailto:dpo@dighub.net.br">dpo@dighub.net.br</a></li>',
+            '</ul>',
+            '<p>Ao prosseguir, você declara ter lido e concordado com estes termos. Política completa: <a id="lgpdLinkPdf" href="#" target="_blank" rel="noopener">abrir PDF</a>.</p>',
+            '<p class="lgpd-versao"><small>Versão da política: <span id="lgpdVersao"></span></small></p>',
+          '</div>',
+          '<footer style="display:flex;gap:8px;justify-content:flex-end">',
+            '<button id="acceptLGPD" style="background:#2d60dd;color:#fff;border:none;padding:10px 14px;border-radius:8px" type="button">Concordo e fechar</button>',
+          '</footer>',
+        '</div>'
+      ].join('');
+      document.body.appendChild(modal);
+
+      const linkPdf = modal.querySelector('#lgpdLinkPdf');
+      if (linkPdf) linkPdf.setAttribute('href', LGPD_PDF_URL);
+      const ver = modal.querySelector('#lgpdVersao');
+      if (ver) ver.textContent = LGPD_VERSION;
+
+      return modal;
+    }
+
+    const link   = document.getElementById('linkLGPD');
+    const chk    = document.getElementById('lgpd');
+    const sel    = document.getElementById('curso');
+    const spanOut= document.getElementById('lgpdCurso');
+
+    const modal  = ensureLGPDModalExists();
+    const btnX   = modal.querySelector('#closeLGPD');
+    const btnOk  = modal.querySelector('#acceptLGPD');
+    const spanIn = modal.querySelector('#lgpdCursoInModal');
+
+    function getCurso(){ return (sel && sel.value && sel.value.trim()) ? sel.value.trim() : 'selecionado'; }
+    function syncCurso(){
+      const c = getCurso();
+      if (spanIn)  spanIn.textContent  = c;
+      if (spanOut) spanOut.textContent = c;
+    }
+    function openModal(ev){
+      if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+      const accepted = localStorage.getItem(LGPD_STORAGE_KEY);
+      if (accepted === LGPD_VERSION) return;
+      syncCurso();
+      safeSetAttr(modal, 'aria-hidden', 'false');
+      modal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+      setTimeout(()=> btnOk && btnOk.focus(), 0);
+    }
+    function closeModal(){
+      safeSetAttr(modal, 'aria-hidden', 'true');
+      modal.style.display = 'none';
+      document.body.style.overflow = '';
+      setTimeout(()=> link && link.focus(), 0);
+    }
+
+    if (link) {
+      if (!link.getAttribute('href')) link.setAttribute('href', '#');
+      link.addEventListener('click', openModal);
+      link.addEventListener('mousedown', ev => ev.stopPropagation());
+      link.addEventListener('click',     ev => ev.stopPropagation());
+    }
+    if (btnX)  btnX.addEventListener('click', closeModal);
+    if (btnOk) btnOk.addEventListener('click', ()=>{
+      if (chk) chk.checked = true;
+      localStorage.setItem(LGPD_STORAGE_KEY, LGPD_VERSION);
+      closeModal();
+    });
+
+    window.addEventListener('keydown', (e)=>{
+      if (e.key === 'Escape' && modal.getAttribute('aria-hidden') === 'false') {
+        e.preventDefault();
+        closeModal();
+      }
+    });
+
+    // Atualiza o nome do curso no modal e ao lado do link
+    if (sel) sel.addEventListener('change', syncCurso);
+    syncCurso();
+  });
+  </script>
+
+  <!-- ====== BLOCO SERVER (precisa vir ANTES dos outros scripts) ====== -->
+  <script>
+    // Disponível cedo e em escopo global
+    window.SERVER = {
+      sid: "<?= sid ?>",
+      sheet: "<?= sheet ?>",
+      pageTitle: "<?= pageTitle ?>",
+      empresa: "<?= empresa ?>",
+      coord: "<?= coord ?>",
+      header: "<?= header ?>",
+      cursos: <?!= JSON.stringify(cursos) ?>
+    };
+
+    // Cursos default também no escopo global
+    window.DEFAULT_COURSES = [
+      'FORMAÇÃO BÁSICA EM TERAPIA CAPILAR',
+      'FORMAÇÃO AVANÇADA EM TERAPIA CAPILAR',
+      'PÓS-GRADUAÇÃO EM TRICOLOGIA E CIÊNCIA COSMÉTICA'
+    ];
+  </script>
+
+  <!-- ====== POPULAR SELECT DE CURSOS ====== -->
+  <script>
+    (()=>{
+      const $curso = document.getElementById('curso');
+
+      function firstNonEmpty(...cands){ for(const c of cands){ if(Array.isArray(c) && c.length) return c; } return []; }
+
+      function normalizeCursos(input){
+        try{
+          if(Array.isArray(input)) return input.map(s=>String(s).trim()).filter(Boolean);
+          if(typeof input==='string'){
+            let s=input.trim(); if(!s) return [];
+            if(s.startsWith('[')&&s.includes(']')){
+              try{ if(s.includes("'")&&!s.includes('"')) s=s.replace(/'/g,'"'); const arr=JSON.parse(s); if(Array.isArray(arr)) return arr.map(x=>String(x).trim()).filter(Boolean);}catch(_){}
+            }
+            if(s.includes('|')||s.includes(',')) return s.split(/[|,]/).map(x=>x.trim()).filter(Boolean);
+            return [s];
+          }
+        }catch(_){}
+        return [];
+      }
+
+      function renderCursos(list){
+        if(!$curso) return;
+        const opts=['<option value="">Selecione...</option>'].concat((list||[]).map(c=>`<option value="${c}">${c}</option>`));
+        $curso.innerHTML=opts.join('');
+      }
+
+      const qsCursos=new URLSearchParams(location.search);
+      const fromUrl=normalizeCursos(qsCursos.get('cursos'));
+      const fromSrv=normalizeCursos((typeof SERVER!=='undefined')?SERVER.cursos:[]);
+      const fallback=(typeof DEFAULT_COURSES!=='undefined')?DEFAULT_COURSES.slice():[];
+      const cursosArr=firstNonEmpty(fromUrl,fromSrv,fallback);
+      renderCursos(cursosArr);
+
+      const pre=qsCursos.get('curso');
+      if(pre){
+        const alvo=cursosArr.find(c=>c.toLowerCase()===pre.trim().toLowerCase());
+        if(alvo) $curso.value=alvo;
+      }
+
+      if(!$curso.options || $curso.options.length<=1) renderCursos(fallback);
+    })();
+  </script>
+
+  <!-- ====== LÓGICA PRINCIPAL ====== -->
+  <script>
+    window.addEventListener('error', e=>{
+      const el=document.getElementById('err');
+      if(el) el.textContent='Erro de script: ' + (e && e.message ? e.message : 'desconhecido');
+    });
+
+    const f=document.getElementById('form');
+    const msg=document.getElementById('msg');
+    const err=document.getElementById('err');
+    const successCard=document.getElementById('successCard');
+    const helpCep=document.getElementById('helpCep');
+    const onlyDigits=s=>(s||'').replace(/\D+/g,'');
+
+    const qs=new URLSearchParams(location.search);
+    const sid=qs.get('sid')||(SERVER.sid||'');
+    const sheet=qs.get('sheet')||(SERVER.sheet||'');
+    const empresa=qs.get('empresa')||(SERVER.empresa||'');
+    const coord=qs.get('coord')||(SERVER.coord||'');
+    const headerImgParam=qs.get('header')||(SERVER.header||'');
+    if(sid) document.getElementById('sid').value=sid;
+    if(sheet) document.getElementById('sheet').value=sheet;
+    if(empresa) document.getElementById('empresa').value=empresa;
+    if(coord) document.getElementById('coord').value=coord;
+
+    const titleParam=qs.get('title')||SERVER.pageTitle||(empresa?`Cadastro de Aluno ${empresa}`:'Cadastro de Aluno');
+    document.title=titleParam;
+    const h1=document.getElementById('pageTitle'); if(h1) h1.textContent=titleParam;
+    if(headerImgParam){ const headerImg=document.getElementById('headerImg'); if(headerImg){ headerImg.src=headerImgParam; } }
+
+    const lgpdTs=document.getElementById('lgpdTs'); if(lgpdTs) lgpdTs.value=new Date().toISOString();
+    fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(j=>{
+      const ipField=document.getElementById('lgpdIp'); if(ipField) ipField.value=j?.ip||'';
+    }).catch(()=>{});
+
+    const $cpf=document.getElementById('cpf'),
+          $cep=document.getElementById('cep'),
+          $whats=document.getElementById('whatsapp');
+
+    function maskCPF(v){
+      const d=onlyDigits(v).slice(0,11);
+      if(d.length<=3) return d;
+      if(d.length<=6) return d.replace(/(\d{3})(\d+)/,'$1.$2');
+      if(d.length<=9) return d.replace(/(\d{3})(\d{3})(\d+)/,'$1.$2.$3');
+      return d.replace(/(\d{3})(\d{3})(\d{3})(\d{0,2})/,'$1.$2.$3-$4');
+    }
+    function maskCEP(v){
+      const d=onlyDigits(v).slice(0,8);
+      if(d.length<=5) return d;
+      return d.replace(/(\d{5})(\d{0,3})/,'$1-$2');
+    }
+    function maskPhoneBR(v){
+      const d=onlyDigits(v).slice(0,11);
+      if(d.length<=2) return `(${d}`;
+      if(d.length<=6) return d.replace(/(\d{2})(\d+)/,'($1) $2');
+      if(d.length<=10) return d.replace(/(\d{2})(\d{4})(\d+)/,'($1) $2-$3');
+      return d.replace(/(\d{2})(\d{5})(\d+)/,'($1) $2-$3');
+    }
+    $cpf.addEventListener('input', e=>e.target.value=maskCPF(e.target.value));
+    $whats.addEventListener('input', e=>e.target.value=maskPhoneBR(e.target.value));
+    $cep.addEventListener('input', e=>{
+      e.target.value=maskCEP(e.target.value);
+      const digits=onlyDigits(e.target.value);
+      if(digits.length===8) consultaCepServer(digits);
+      if(digits.length<8) helpCep.textContent='';
+    });
+    $cep.addEventListener('blur', e=>{
+      const digits=onlyDigits(e.target.value);
+      if(digits.length===8) consultaCepServer(digits);
+    });
+
+    function consultaCepServer(cep){
+      try{
+        helpCep.textContent='Buscando endereço pelo CEP...';
+        google.script.run
+          .withSuccessHandler(res=>{
+            if(res && res.ok && res.data){
+              document.getElementById('endereco').value=res.data.logradouro||'';
+              document.getElementById('bairro').value=res.data.bairro||'';
+              document.getElementById('cidade').value=res.data.cidade||'';
+              document.getElementById('estado').value=res.data.uf||'';
+              const $pais=document.getElementById('pais'); if($pais) $pais.value='Brasil';
+              helpCep.textContent=(res.data.logradouro||res.data.bairro||res.data.cidade)?'Endereço preenchido automaticamente.':'';
+            }else{
+              helpCep.textContent=(res && res.message)?res.message:'Não foi possível obter o endereço.';
+            }
+          })
+          .withFailureHandler(e=>{
+            helpCep.textContent=e && e.message ? e.message : 'Erro ao consultar CEP.';
+          })
+          .cepLookup(cep);
+      }catch(_){ helpCep.textContent=''; }
+    }
+
+    const $escolaridade=document.getElementById('escolaridade');
+    const $blocoGrad=document.getElementById('blocoGraduacao');
+    const $grad=document.getElementById('graduacao');
+    const precisaGrad=val=>['Ensino Superior Completo (Graduação)','Pós-graduação','Mestrado','Doutorado'].includes(val);
+    function toggleGraduacao(){
+      const on=precisaGrad($escolaridade.value);
+      $blocoGrad.style.display=on?'block':'none';
+      $grad.required=on;
+      if(!on) $grad.value='';
+    }
+    $escolaridade.addEventListener('change', toggleGraduacao);
+    setTimeout(toggleGraduacao,0);
+
+    function showBanner(type,title,text){
+      if(!msg) return;
+      msg.className='banner '+(type||'info');
+      msg.innerHTML=(title?`<strong>${title}</strong><br>`:'')+(text||'');
+    }
+    function clearBanner(){ if(msg){ msg.className='help'; msg.textContent=''; } }
+
+    function validateRequired(){
+      let ok=true;
+      const req=['curso','localEvento','nome','cpf','email','whatsapp','cep','endereco','numero','cidade','estado','pais','profissao','escolaridade'];
+      req.forEach(id=>{
+        const el=document.getElementById(id);
+        if(!el || !el.value.trim()){ el && el.classList.add('invalid'); ok=false; }
+        else { el.classList.remove('invalid'); }
+      });
+      const cpfDigits=onlyDigits(document.getElementById('cpf').value);
+      if(cpfDigits.length!==11) ok=false;
+      const email=document.getElementById('email').value.trim();
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email)) ok=false;
+      const wDigits=onlyDigits(document.getElementById('whatsapp').value);
+      if(wDigits.length<10 || wDigits.length>11) ok=false;
+      const cepDigits=onlyDigits(document.getElementById('cep').value);
+      if(cepDigits.length!==8) ok=false;
+      const uf=document.getElementById('estado').value.trim().toUpperCase();
+      if(!/^(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)$/.test(uf)) ok=false;
+      if(precisaGrad($escolaridade.value) && !document.getElementById('graduacao').value.trim()) ok=false;
+      const lgpdOk=document.getElementById('lgpd'); if(!lgpdOk || !lgpdOk.checked) ok=false;
+      return ok;
+    }
+
+    const submitBtn=document.querySelector('button[type="submit"]');
+    f.addEventListener('submit', e=>{
+      e.preventDefault();
+      clearBanner(); err.textContent=''; successCard.style.display='none';
+
+      if(typeof google==='undefined' || !google.script || !google.script.run){
+        err.textContent='Ambiente inválido: abra o link publicado do Web App do Google Apps Script.';
+        return;
+      }
+      if(!document.getElementById('sid').value){
+        err.textContent='Link inválido: falta o parâmetro sid.';
+        return;
+      }
+      if(!validateRequired()){
+        err.textContent='Revise os campos obrigatórios.';
+        return;
+      }
+
+      showBanner('info','Enviando...','Estamos registrando sua inscrição.');
+      submitBtn.disabled=true; const old=submitBtn.textContent; submitBtn.textContent='Enviando...';
+
+      const dados=Object.fromEntries(new FormData(f).entries());
+      dados.atualizarDados = f.atualizarDados && f.atualizarDados.checked ? 'on' : '';
+
+      google.script.run
+        .withSuccessHandler(res=>{
+          submitBtn.disabled=false; submitBtn.textContent=old; clearBanner();
+          if(res && res.ok){
+            f.reset();
+            const lgpdTs=document.getElementById('lgpdTs'); if(lgpdTs) lgpdTs.value=new Date().toISOString();
+            toggleGraduacao();
+            successCard.style.display='block';
+            successCard.textContent=res.message||'Inscrição feita com sucesso! Você receberá um e-mail de confirmação.';
+          }else{
+            err.textContent=(res && res.message)?res.message:'Não foi possível salvar. Tente novamente.';
+          }
+        })
+        .withFailureHandler(e=>{
+          submitBtn.disabled=false; submitBtn.textContent=old; clearBanner();
+          err.textContent=e && e.message ? e.message : 'Erro ao salvar (falha na execução do Apps Script).';
+        })
+        .salvarInscricao(dados);
+    });
+
+    function fillForm(data){
+      const set=(id,val)=>{ const el=document.getElementById(id); if(el && typeof val!=='undefined') el.value=val||''; };
+
+      const $curso=document.getElementById('curso');
+      if($curso && data.curso){
+        const has=Array.from($curso.options).some(o=>(o.value||o.textContent)===data.curso);
+        if(!has){ const opt=document.createElement('option'); opt.value=data.curso; opt.textContent=data.curso; $curso.appendChild(opt); }
+        $curso.value=data.curso; $curso.dispatchEvent(new Event('change'));
+      }
+
+      set('localEvento',data.localEvento);
+      set('ciclo',data.ciclo);
+      set('status',data.status||'');
+      set('nome',data.nome);
+      set('email',data.email);
+      set('whatsapp',data.whatsapp);
+      set('endereco',data.endereco);
+      set('numero',data.numero);
+      set('complemento',data.complemento);
+      set('bairro',data.bairro);
+      set('cep',(data.cep||'').replace(/^(\d{5})(\d{3})$/,'$1-$2'));
+      set('cidade',data.cidade);
+      set('estado',data.estado);
+      set('pais',data.pais||'');
+      set('profissao',data.profissao);
+      set('escolaridade',data.escolaridade);
+      set('graduacao',data.graduacao);
+
+      document.getElementById('escolaridade').dispatchEvent(new Event('change'));
+    }
+
+    (function setupPrefill(){
+      const btn=document.getElementById('btnPrefill');
+      const note=document.getElementById('prefillNote');
+      if(!btn || !note) return;
+
+      function showNote(type,text){ note.className='help '+(type||'info'); note.textContent=text||''; }
+
+      btn.addEventListener('click', ()=>{
+        const cpfDigits=(document.getElementById('cpf').value||'').replace(/\D+/g,'');
+        if(cpfDigits.length!==11){ showNote('warn','Informe um CPF válido (11 dígitos) para buscar seu cadastro.'); return; }
+        if(typeof google==='undefined' || !google.script || !google.script.run){ showNote('warn','Abra o link publicado do Web App para usar o preenchimento automático.'); return; }
+        showNote('info','Procurando seu cadastro...');
+
+        const sid=document.getElementById('sid').value;
+        const sheet=document.getElementById('sheet').value;
+
+        google.script.run
+          .withSuccessHandler(res=>{
+            if(res && res.ok && res.data){
+              fillForm(res.data);
+              const upd=document.getElementById('atualizarDados'); if(upd) upd.checked=true;
+              showNote('ok','Cadastro encontrado e campos preenchidos automaticamente.');
+            }else{
+              showNote('warn','Ainda estamos recadastrando. Se não encontramos seu cadastro, preencha os dados manualmente.');
+            }
+          })
+          .withFailureHandler(()=>{ showNote('warn','Não foi possível buscar agora. Por favor, preencha manualmente.'); })
+          .buscarAlunoPorCPF({ sid, sheet, cpf: cpfDigits });
+      });
+    })();
+  </script>
+
+  <!-- 🔧 Listener de erros (único) -->
+  <script>
+  (function(){
+    function shouldSuppressError(message){
+      try{
+        if (!message) return false;
+        if (/setAttribute/i.test(message) && document.getElementById('lgpdModal')) return true;
+        return false;
+      }catch(_){ return false; }
+    }
+
+    window.addEventListener('error', (e)=>{
+      const el = document.getElementById('err');
+      if (!el) return;
+      const message = e && e.message ? e.message : '';
+      if (shouldSuppressError(message)) return;
+      el.textContent = 'Erro de script: ' + message;
+    });
+
+    window.addEventListener('unhandledrejection', (e)=>{
+      const el = document.getElementById('err');
+      if (!el) return;
+      const message = (e && e.reason && (e.reason.message || e.reason)) || '';
+      if (shouldSuppressError(String(message))) return;
+      el.textContent = 'Atenção: houve uma falha temporária. Tente novamente.';
+      console && console.warn && console.warn('Unhandled rejection:', e);
+    });
+  })();
+  </script>
+</body>
+</html>
