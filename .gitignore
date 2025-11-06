@@ -1,0 +1,22 @@
+# Apps Script / Clasp
+.clasp.json
+
+# Node / NPM (se usar o clasp no seu PC)
+node_modules/
+npm-debug.log*
+yarn.lock
+package-lock.json
+
+# Builds (se usar bundler no futuro)
+dist/
+build/
+
+# Segredos
+.env
+.env.*
+
+# Sistema / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
