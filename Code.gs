@@ -47,7 +47,23 @@ const STANDARD_HEADER = [
 const sanitize_ = s => (s || '').toString().trim();                       // Normaliza string
 const onlyDigits_ = s => sanitize_(s).replace(/\D+/g, '');                // Mantém apenas dígitos
 const norm_ = s => sanitize_(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); // Remove acentos
-
+function normalizeTimestampValue_(value) {
+  if (!value) return '';
+  if (value instanceof Date) {
+    return String(value.getTime());
+  }
+  if (typeof value === 'number') {
+    if (!isFinite(value)) return '';
+    return String(Math.round(value));
+  }
+  const str = String(value).trim();
+  if (!str) return '';
+  const asNumber = Number(str);
+  if (!Number.isNaN(asNumber) && isFinite(asNumber)) {
+    return String(Math.round(asNumber));
+  }
+  return str;
+}
 function canon_(s){
   return (s || '')
     .toString()
@@ -704,8 +720,15 @@ function headerLogicalMap_(headerArr){
     optin: map.optin, consentImg: map.consentImg,
   };
 }
-function matchesCursoEvento_(map, rowValues, cursoKey, cicloKey, localKey) {
+function matchesCursoEvento_(map, rowValues, cursoKey, cicloKey, localKey, opts) {
   if (!map) return false;
+  const options = opts || {};
+  const timestampValue = normalizeTimestampValue_(options.timestampValue);
+  const matchesTimestamp = () => {
+    if (!timestampValue) return false;
+    if (map.timestamp === -1) return false;
+    return timestampValue === normalizeTimestampValue_(rowValues[map.timestamp]);
+  };
 
   const matchesCurso = !cursoKey || (map.curso > -1 && canon_(rowValues[map.curso]) === cursoKey);
   if (!matchesCurso) return false;
@@ -713,11 +736,14 @@ function matchesCursoEvento_(map, rowValues, cursoKey, cicloKey, localKey) {
   const rowCiclo = (map.ciclo > -1) ? canon_(rowValues[map.ciclo]) : '';
   if (cicloKey || rowCiclo) {
     if (!cicloKey || !rowCiclo) return false;
-    return rowCiclo === cicloKey;
+     return false;
   }
+        if (matchesTimestamp()) return true;
 
   const rowLocal = (map.local > -1) ? canon_(rowValues[map.local]) : '';
   if (localKey || rowLocal) {
+     if (rowLocal === localKey) return true;
+    if (matchesTimestamp()) return true;
     if (!localKey || !rowLocal) return false;
     return rowLocal === localKey;
   }
@@ -801,6 +827,7 @@ function syncMirrorTargets_(sourceHeader, sourceRow) {
   const cursoKey = (srcMap.curso > -1) ? canon_(sourceRow[srcMap.curso]) : '';
   const cicloKey = (srcMap.ciclo > -1) ? canon_(sourceRow[srcMap.ciclo]) : '';
   const localKey = (srcMap.local > -1) ? canon_(sourceRow[srcMap.local]) : '';
+  const timestampKey = (srcMap.timestamp > -1) ? normalizeTimestampValue_(sourceRow[srcMap.timestamp]) : '';
 
   MIRROR_TARGETS.forEach(target => {
     try {
@@ -819,7 +846,7 @@ function syncMirrorTargets_(sourceHeader, sourceRow) {
         const cpfRow = onlyDigits_(row[destMap.cpf]);
         if (cpfRow !== cpfDigits) continue;
 
-        if (!matchesCursoEvento_(destMap, row, cursoKey, cicloKey, localKey)) continue;
+        if (!matchesCursoEvento_(destMap, row, cursoKey, cicloKey, localKey, { timestampValue: timestampKey })) continue;
 
         let changed = false;
         Object.keys(valuesToSync).forEach(key => {
@@ -864,6 +891,7 @@ function syncTargetsForRow_(sourceTarget, sourceHeader, sourceRow) {
   const cursoKey = (srcMap.curso > -1) ? canon_(sourceRow[srcMap.curso]) : '';
   const cicloKey = (srcMap.ciclo > -1) ? canon_(sourceRow[srcMap.ciclo]) : '';
   const localKey = (srcMap.local > -1) ? canon_(sourceRow[srcMap.local]) : '';
+  const timestampKey = (srcMap.timestamp > -1) ? normalizeTimestampValue_(sourceRow[srcMap.timestamp]) : '';
 
   const targets = SYNC_TARGETS.filter(t => !(t.sid === sourceTarget.sid && t.sheet === sourceTarget.sheet));
   if (!targets.length) return;
@@ -887,7 +915,7 @@ function syncTargetsForRow_(sourceTarget, sourceHeader, sourceRow) {
         const cpfRow = onlyDigits_(row[destMap.cpf]);
         if (cpfRow !== cpfDigits) continue;
 
-        if (!matchesCursoEvento_(destMap, row, cursoKey, cicloKey, localKey)) continue;
+         if (!matchesCursoEvento_(destMap, row, cursoKey, cicloKey, localKey, { timestampValue: timestampKey })) continue;
 
         let changed = false;
         Object.keys(valuesToSync).forEach(key => {
@@ -1047,5 +1075,7 @@ function consumeSyncBypass_(sheet, rowIndex) {
   } catch (_) {}
   return false;
 }
+
+
 
 
