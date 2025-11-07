@@ -2,17 +2,23 @@
 
 /// ---------- Configurações principais ----------
 const SHEET_NAME = 'BASE DE DADOS CADASTRAIS'; // aba eterna (origem) — com ESPAÇOS
-const NOME_EMPRESA_DEFAULT = 'Instituto Linuetto Chapecó';
-const COORD_DEFAULT = 'Marson Luiz Klein';
-const ASSUNTO_EMAIL = 'Inscrição recebida — Programa de Certificações Instituto Linuetto Chapecó';
+const NOME_EMPRESA_DEFAULT = 'Grandha Alphaville';
+const COORD_DEFAULT = 'Simone Martins';
+const ASSUNTO_EMAIL = 'Inscrição recebida — Programa de Certificações Grandha Alphaville';
 
 // ID padrão da planilha (onde está o formulário)
-const SID_DEFAULT = '1leP4uEloD5Hu5PsEap-xWMwrHbbS7Vv_Fncz39Nditc';
+const SID_DEFAULT = '1gCBRIGT1sFXlHQPCdWai0Mn88ATJtS7fjDyHqg32mrw';
 
 // ---------- DESTINO ESPELHO (onde cai a cópia) ----------
-const DEST_SPREADSHEET_ID = '1hgzpIBglmI088a3fngJCj9kF8yso-7uBa1kIXVUgL2E';
+const DEST_SPREADSHEET_ID = '1kVX0TH9_lM7e2nceMi6OktrGUZ0LootvVTLEx3AFOIo';
 const DEST_SHEET_NAME     = 'BASE DE DADOS CADASTRAIS'; // com ESPAÇOS
-/************** Code.gs — limpo e consolidado (com correções CEP + robustez no envio) **************/
+const NATIONAL_SPREADSHEET_ID = '1bcI8hvJAYqjfCm0rBFnrhhdUF9d0DUQpJbv9tx7zlls';
+const NATIONAL_SHEET_NAME     = 'BASE DE DADOS CADASTRAIS';
+
+const MIRROR_TARGETS = [
+  { sid: DEST_SPREADSHEET_ID, sheet: DEST_SHEET_NAME },
+  { sid: NATIONAL_SPREADSHEET_ID, sheet: NATIONAL_SHEET_NAME },
+].filter(t => String(t.sid || '').trim());
 
 /* ========= Cabeçalho oficial =========
  * Mantém TODOS os campos solicitados pelo usuário e adiciona os campos LGPD.
@@ -554,9 +560,9 @@ function atualizarDadosAluno_(sh, header, values, campos, posicoesAlvoOpt) {
   const lastCol = sh.getLastColumn();
 
   // Key de evento para limitar o update ao mesmo curso/evento
-  const curIn = canon_(campos.curso || ''); // pode não vir; então derivamos via posicoesAlvoOpt
-  const cicIn = canon_(campos.ciclo || '');
-  const locIn = canon_(campos.localEvento || '');
+  const cursoKey = canon_(campos.curso || ''); // pode não vir; então derivamos via posicoesAlvoOpt
+  const cicloKey = canon_(campos.ciclo || '');
+  const localKey = canon_(campos.localEvento || '');
 
   const shouldUpdate = (row, idx) => {
     // Se passamos posicoesAlvoOpt (indices duplicados), use-os diretamente
@@ -566,18 +572,8 @@ function atualizarDadosAluno_(sh, header, values, campos, posicoesAlvoOpt) {
     const cpfMatch   = (map.cpf > -1)   && (onlyDigits_(row[map.cpf]) === campos.cpf);
     const emailMatch = (map.email > -1) && (String(row[map.email]).trim().toLowerCase() === campos.email);
     const alunoMatch = cpfMatch || emailMatch;
-
-    const cursoMatch = (map.curso > -1) && (canon_(row[map.curso]) === curIn);
-    const cicRow = (map.ciclo > -1) ? canon_(row[map.ciclo]) : '';
-    const locRow = (map.local > -1) ? canon_(row[map.local]) : '';
-
-    const ambosTemCiclo = !!cicIn && !!cicRow;
-    const ambosSemCiclo = !cicIn && !cicRow;
-    const eventoMatch =
-      (ambosTemCiclo && cicRow === cicIn) ||
-      (ambosSemCiclo && !!locIn && !!locRow && locRow === locIn);
-
-    return alunoMatch && cursoMatch && eventoMatch;
+     const eventoMatch = matchesCursoEvento_(map, row, cursoKey, cicloKey, localKey);
+    return alunoMatch && eventoMatch;    
   };
 
   values.forEach((row, i) => {
@@ -591,7 +587,14 @@ function atualizarDadosAluno_(sh, header, values, campos, posicoesAlvoOpt) {
         changed = true;
       }
     });
-    if (changed) sh.getRange(startRow + i, 1, 1, lastCol).setValues([row]);
+    if (changed) {
+      sh.getRange(startRow + i, 1, 1, lastCol).setValues([row]);
+      try {
+        syncMirrorTargets_(header, row);
+      } catch (err) {
+        Logger.log('Falha ao sincronizar espelho após atualizar dados: ' + err);
+      }
+    }
   });
 }
 
@@ -616,9 +619,9 @@ function findAlunoByCPFInSheet_(sid, sheetName, cpfDigits){
     if (cpfRow === cpfDigits){
       const get = idx => (idx > -1 ? row[idx] : '');
       const out = {
-        curso:       get(map.curso),
-        localEvento: get(map.local),
-        ciclo:       get(map.ciclo),
+        curso:       '',             // <- forçar campo em branco
+        localEvento: '',             // <- idem
+        ciclo:       '',             // <- idem
         status:      get(map.status) || '',
         nome:        get(map.nome),
         email:       get(map.email),
@@ -659,8 +662,9 @@ function buscarAlunoPorCPF(opts) {
     let res = findAlunoByCPFInSheet_(sid, sheet, cpfIn);
     if (res.ok) return res;
 
-    if (DEST_SPREADSHEET_ID) {
-      res = findAlunoByCPFInSheet_(DEST_SPREADSHEET_ID, DEST_SHEET_NAME, cpfIn);
+          for (const target of MIRROR_TARGETS) {
+      if (target.sid === sid && (target.sheet || SHEET_NAME) === sheet) continue;
+      res = findAlunoByCPFInSheet_(target.sid, target.sheet || SHEET_NAME, cpfIn);
       if (res.ok) return res;
     }
 
@@ -684,6 +688,23 @@ function headerLogicalMap_(headerArr){
     lgpdVersion: map.lgpdVersion, lgpdTs: map.lgpdTs, lgpdIp: map.lgpdIp,
     optin: map.optin, consentImg: map.consentImg,
   };
+}
+/* Verifica se uma linha pertence ao mesmo curso/evento que as chaves fornecidas */
+function matchesCursoEvento_(map, rowValues, cursoKey, cicloKey, localKey) {
+  if (!map) return false;
+
+  const matchesCurso = !cursoKey || (map.curso > -1 && canon_(rowValues[map.curso]) === cursoKey);
+  if (!matchesCurso) return false;
+
+  const rowCiclo = (map.ciclo > -1) ? canon_(rowValues[map.ciclo]) : '';
+  const rowLocal = (map.local > -1) ? canon_(rowValues[map.local]) : '';
+
+  const ambosTemCiclo = !!cicloKey && !!rowCiclo;
+  const ambosSemCiclo = !cicloKey && !rowCiclo;
+
+  if (ambosTemCiclo) return rowCiclo === cicloKey;
+  if (ambosSemCiclo && localKey) return !!rowLocal && rowLocal === localKey;
+  return false;
 }
 
 /* Constrói linha de saída para o destino, alinhando colunas por nome */
@@ -717,19 +738,120 @@ function buildRowForDest_(destHeader, sourceHeader, sourceRow){
 }
 
 /* Obtém aba de destino garantindo cabeçalho completo */
-function getDestSheet_() {
-  const ss = SpreadsheetApp.openById(DEST_SPREADSHEET_ID);
-  let sh = ss.getSheetByName(DEST_SHEET_NAME);
-  if (!sh) sh = ss.insertSheet(DEST_SHEET_NAME);
+function getDestSheet_(sid, sheetName = DEST_SHEET_NAME) {
+  const id = String(sid || '').trim();
+  if (!id) throw new Error('Faltou o ID da planilha de destino.');
+  const ss = SpreadsheetApp.openById(id);
+  let sh = ss.getSheetByName(sheetName);
+  if (!sh) sh = ss.insertSheet(sheetName);
   ensureStandardHeader_(sh);
   return sh;
 }
 
 /* Aplica espelhamento da nova linha para a planilha secundária */
 function mirrorToSecondary_(sourceHeader, newRow){
-  if (!DEST_SPREADSHEET_ID) return;
-  const destSh = getDestSheet_();
-  const destHeader = destSh.getRange(1,1,1,destSh.getLastColumn()).getValues()[0] || [];
-  const out = buildRowForDest_(destHeader, sourceHeader, newRow);
-  destSh.appendRow(out);
+  if (!MIRROR_TARGETS.length) return;
+  MIRROR_TARGETS.forEach(target => {
+    try {
+      const destSh = getDestSheet_(target.sid, target.sheet);
+      const lastCol = destSh.getLastColumn() || STANDARD_HEADER.length;
+      const destHeader = destSh.getRange(1,1,1,lastCol).getValues()[0] || [];
+      const out = buildRowForDest_(destHeader, sourceHeader, newRow);
+      destSh.appendRow(out);
+    } catch (err) {
+      Logger.log('Falha ao espelhar destino ' + target.sid + ': ' + err);
+    }
+  });
+}
+/* Atualiza ciclo/status nos espelhos quando editados manualmente na planilha origem */
+function syncMirrorTargets_(sourceHeader, sourceRow) {
+  if (!MIRROR_TARGETS.length) return;
+
+  const srcMap = headerMap_(sourceHeader);
+  if (srcMap.cpf === -1) return;
+
+  const cpfDigits = onlyDigits_(sourceRow[srcMap.cpf]);
+  if (!cpfDigits) return;
+
+  const valuesToSync = {};
+  ['ciclo', 'status'].forEach(key => {
+    const idx = srcMap[key];
+    if (idx > -1) valuesToSync[key] = sourceRow[idx];
+  });
+  if (!Object.keys(valuesToSync).length) return;
+
+  const cursoKey = (srcMap.curso > -1) ? canon_(sourceRow[srcMap.curso]) : '';
+  const cicloKey = (srcMap.ciclo > -1) ? canon_(sourceRow[srcMap.ciclo]) : '';
+  const localKey = (srcMap.local > -1) ? canon_(sourceRow[srcMap.local]) : '';
+
+  MIRROR_TARGETS.forEach(target => {
+    try {
+      const destSh = getDestSheet_(target.sid, target.sheet);
+      const lastRow = destSh.getLastRow();
+      const lastCol = destSh.getLastColumn();
+      if (lastRow < 2 || lastCol < 1) return;
+
+      const destHeader = destSh.getRange(1, 1, 1, lastCol).getValues()[0] || [];
+      const destMap = headerMap_(destHeader);
+      if (destMap.cpf === -1) return;
+
+      const data = destSh.getRange(2, 1, lastRow - 1, lastCol).getValues();
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        const cpfRow = onlyDigits_(row[destMap.cpf]);
+        if (cpfRow !== cpfDigits) continue;
+
+        if (!matchesCursoEvento_(destMap, row, cursoKey, cicloKey, localKey)) continue;
+
+        let changed = false;
+        Object.keys(valuesToSync).forEach(key => {
+          const destIdx = destMap[key];
+          if (destIdx > -1 && row[destIdx] !== valuesToSync[key]) {
+            row[destIdx] = valuesToSync[key];
+            changed = true;
+          }
+        });
+
+        if (changed) {
+          destSh.getRange(i + 2, 1, 1, lastCol).setValues([row]);
+        }
+        return; // Encontrou e tratou a linha correspondente
+      }
+    } catch (err) {
+      Logger.log('Falha ao sincronizar espelho ' + target.sid + ': ' + err);
+    }
+  });
+}
+
+/* Dispara sincronização quando ciclo/status forem alterados manualmente na planilha original */
+function onEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    const sheet = e.range.getSheet();
+    if (!sheet || sheet.getName() !== SHEET_NAME) return;
+
+    const lastCol = sheet.getLastColumn();
+    if (lastCol < 1) return;
+
+    const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0] || [];
+    const map = headerMap_(header);
+    const watchCols = [map.ciclo, map.status].filter(idx => idx > -1).map(idx => idx + 1);
+    if (!watchCols.length) return;
+
+    const startCol = e.range.getColumn();
+    const endCol = startCol + e.range.getNumColumns() - 1;
+    const intersects = watchCols.some(col => col >= startCol && col <= endCol);
+    if (!intersects) return;
+
+    const startRow = e.range.getRow();
+    const numRows = e.range.getNumRows();
+    for (let offset = 0; offset < numRows; offset++) {
+      const rowNumber = startRow + offset;
+      if (rowNumber <= 1) continue;
+      const rowValues = sheet.getRange(rowNumber, 1, 1, lastCol).getValues()[0] || [];
+      syncMirrorTargets_(header, rowValues);
+    }
+  } catch (err) {
+    Logger.log('onEdit - falha ao sincronizar espelhos: ' + err);
+  }
 }
