@@ -40,7 +40,9 @@ const STANDARD_HEADER = [
   'ENDEREÇO','NÚMERO','COMPLEMENTO','BAIRRO','CEP','CIDADE','ESTADO','PAÍS',
   'PROFISSÃO','ESCOLARIDADE','GRADUAÇÃO',
   // Novos campos LGPD/Consentimentos (obrigatórios neste projeto)
-  'LGPD_VERSION','LGPD_TS','LGPD_IP','OPT-IN','CONSENTIMENTO DE IMAGEM'
+  'LGPD_VERSION','LGPD_TS','LGPD_IP','OPT-IN','CONSENTIMENTO DE IMAGEM',
+  // Identificação da empresa responsável pelo cadastro
+  'EMPRESA'
 ];
 
 /* ========= Helpers utilitários ========= */
@@ -215,6 +217,7 @@ function headerMap_(header){
   map.profissao   = findSmart('profissao');
   map.escolaridade= findSmart('escolaridade');
   map.graduacao   = findSmart('graduacao','curso academico','curso superior area','area de formacao','formacao curso');
+  map.empresa     = findSmart('empresa','nome da empresa','empresa responsavel');
 
   // Campos LGPD/Consentimentos
   map.lgpdVersion = findSmart('lgpd version','lgpd_version');
@@ -364,6 +367,7 @@ function salvarInscricao(dados) {
     const profissao     = sanitize_(dados.profissao);
     const escolaridade  = sanitize_(dados.escolaridade);
     const graduacao     = sanitize_(dados.graduacao);
+    const empresa       = sanitize_(dados.empresa) || NOME_EMPRESA_DEFAULT;
 
     // LGPD + consentimentos
     const lgpdVersion   = sanitize_(dados.lgpdVersion);
@@ -448,7 +452,7 @@ function salvarInscricao(dados) {
         atualizarDadosAluno_(sh, header, values, {
           cpf, email, whatsapp, endereco, numero, complemento, bairro, cep, cidade, estado, pais,
           profissao, escolaridade, graduacao, nomeCompleto, localEvento, ciclo, status,
-          lgpdVersion, lgpdTs, lgpdIp, optin, consentImagem
+          lgpdVersion, lgpdTs, lgpdIp, optin, consentImagem, empresa
         }, posicoesDuplicadas);
 
         return {
@@ -525,10 +529,10 @@ function salvarInscricao(dados) {
         .replace(/{{CICLO}}/g, escapeHtml_(ciclo || '—'))
         .replace(/{{STATUS}}/g, escapeHtml_(status || ''))
         .replace(/{{GRADUACAO}}/g, escapeHtml_(exigeGraduacao ? graduacao : ''))
-        .replace(/{{NOME_EMPRESA}}/g, escapeHtml_(sanitize_(dados.empresa) || NOME_EMPRESA_DEFAULT));
+        .replace(/{{NOME_EMPRESA}}/g, escapeHtml_(empresa));
 
       GmailApp.sendEmail(email, ASSUNTO_EMAIL, ' ', {
-        name: sanitize_(dados.empresa) || NOME_EMPRESA_DEFAULT,
+        name: empresa,
         htmlBody: corpo
       });
     } catch(e) { Logger.log('Falha ao enviar e-mail: ' + e); }
@@ -572,6 +576,7 @@ function atualizarDadosAluno_(sh, header, values, campos, posicoesAlvoOpt) {
   if (map.profissao   > -1) updates[map.profissao]   = campos.profissao;
   if (map.escolaridade> -1) updates[map.escolaridade]= campos.escolaridade;
   if (map.graduacao   > -1 && typeof campos.graduacao !== 'undefined') updates[map.graduacao] = campos.graduacao;
+  if (map.empresa     > -1) updates[map.empresa]     = campos.empresa;
 
   if (map.whatsapp    > -1) updates[map.whatsapp]    = campos.whatsapp;
   if (map.email       > -1) updates[map.email]       = campos.email;
@@ -715,6 +720,7 @@ function headerLogicalMap_(headerArr){
     endereco: map.endereco, numero: map.numero, complemento: map.complemento, bairro: map.bairro,
     cep: map.cep, cidade: map.cidade, estado: map.estado, pais: map.pais,
     profissao: map.profissao, escolaridade: map.escolaridade, graduacao: map.graduacao,
+     empresa: map.empresa,
     // LGPD/Consentimentos
     lgpdVersion: map.lgpdVersion, lgpdTs: map.lgpdTs, lgpdIp: map.lgpdIp,
     optin: map.optin, consentImg: map.consentImg,
@@ -735,17 +741,16 @@ function matchesCursoEvento_(map, rowValues, cursoKey, cicloKey, localKey, opts)
 
   const rowCiclo = (map.ciclo > -1) ? canon_(rowValues[map.ciclo]) : '';
   if (cicloKey || rowCiclo) {
-    if (!cicloKey || !rowCiclo) return false;
-     return false;
+    if (rowCiclo === cicloKey) return true;
+    if (matchesTimestamp()) return true;
+    if (cicloKey && rowCiclo) return false;
   }
-        if (matchesTimestamp()) return true;
 
   const rowLocal = (map.local > -1) ? canon_(rowValues[map.local]) : '';
   if (localKey || rowLocal) {
-     if (rowLocal === localKey) return true;
+    if (rowLocal === localKey) return true;
     if (matchesTimestamp()) return true;
-    if (!localKey || !rowLocal) return false;
-    return rowLocal === localKey;
+    if (localKey && rowLocal) return false;
   }
 
   return true;
@@ -774,6 +779,7 @@ function buildRowForDest_(destHeader, sourceHeader, sourceRow){
   put('endereco'); put('numero'); put('complemento'); put('bairro');
   put('cep'); put('cidade'); put('estado'); put('pais');
   put('profissao'); put('escolaridade'); put('graduacao');
+  put('empresa');
 
   // LGPD/Consentimentos
   put('lgpdVersion'); put('lgpdTs'); put('lgpdIp'); put('optin'); put('consentImg');
@@ -1075,6 +1081,7 @@ function consumeSyncBypass_(sheet, rowIndex) {
   } catch (_) {}
   return false;
 }
+
 
 
 
