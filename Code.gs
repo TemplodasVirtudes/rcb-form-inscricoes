@@ -29,7 +29,8 @@ const SYNC_TARGETS = SYNC_TARGETS_BASE
     arr.findIndex(other => other.sid === target.sid && other.sheet === target.sheet) === idx); 
 const SYNC_COLUMNS = ['ciclo', 'status'];
 const SYNC_PROP_FLAG = 'SYNC_MIRROR_IN_PROGRESS';
-const SYNC_CACHE_PREFIX = 'SYNC_SKIP_ROW:'; 
+const SYNC_CACHE_PREFIX = 'SYNC_SKIP_ROW:';
+const EMPRESA_FILL_CACHE_PREFIX = 'EMPRESA_FILL:';
 /* ========= Cabeçalho oficial =========
  * Mantém TODOS os campos solicitados pelo usuário e adiciona os campos LGPD.
  */
@@ -172,7 +173,68 @@ function ensureStandardHeader_(sh) {
   });
   sh.setFrozenRows(1);
 }
+function ensureEmpresaColumnPopulated_(sh, fallbackValueOpt, headerOpt) {
+  try {
+    if (!sh) return;
 
+    const fallbackProvided = sanitize_(fallbackValueOpt);
+    const fallback = fallbackProvided || NOME_EMPRESA_DEFAULT;
+    const fallbackSanitized = sanitize_(fallback);
+
+    const ssId = sh.getParent().getId();
+    const sheetName = sh.getName();
+    const cacheKey = `${EMPRESA_FILL_CACHE_PREFIX}${ssId}:${sheetName}:${fallbackSanitized}`;
+    const cache = CacheService.getScriptCache();
+    if (cache.get(cacheKey)) return;
+
+    const lastRow = sh.getLastRow();
+    const lastCol = sh.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) {
+      cache.put(cacheKey, '1', 300);
+      return;
+    }
+
+    const header = Array.isArray(headerOpt) && headerOpt.length
+      ? headerOpt
+      : (sh.getRange(1, 1, 1, lastCol).getValues()[0] || []);
+    const map = headerMap_(header);
+    const empresaIdx = map.empresa;
+    if (empresaIdx === -1) {
+      cache.put(cacheKey, '1', 300);
+      return;
+    }
+
+    const numRows = lastRow - 1;
+    const range = sh.getRange(2, empresaIdx + 1, numRows, 1);
+    const values = range.getValues();
+    let changed = false;
+    let lastKnown = fallbackSanitized ? fallback : '';
+
+    for (let i = 0; i < numRows; i++) {
+      const raw = values[i][0];
+      const current = sanitize_(raw);
+      if (current) {
+        lastKnown = raw;
+        continue;
+      }
+
+      const fill = lastKnown || fallback;
+      if (sanitize_(fill)) {
+        values[i][0] = fill;
+        lastKnown = fill;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      range.setValues(values);
+    }
+
+    cache.put(cacheKey, '1', 300);
+  } catch (err) {
+    Logger.log('Falha ao completar coluna EMPRESA: ' + err);
+  }
+}
 /* Utilitário manual para rodar no editor: verifica/ajusta o cabeçalho na planilha ativa */
 function runEnsureHeaderMaster() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -399,6 +461,7 @@ function salvarInscricao(dados) {
     // ------------------- Acessa planilha + mapeia colunas -------------------
     const sh = getSheet_(sid, sheetName);
     const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0] || [];
+    try { ensureEmpresaColumnPopulated_(sh, empresa, header); } catch (err) { Logger.log('Falha ao garantir EMPRESA na origem: ' + err); }
     const map = headerMap_(header);
 
     if (map.email === -1 || map.cpf === -1 || map.curso === -1) {
@@ -501,6 +564,7 @@ function salvarInscricao(dados) {
     put(map.lgpdIp,      lgpdIp);
     put(map.optin,       optin);
     put(map.consentImg,  consentImagem);
+     put(map.empresa,     empresa);
 
     sh.appendRow(row);
     SpreadsheetApp.flush();
@@ -511,7 +575,7 @@ function salvarInscricao(dados) {
     tlog('appendRow:', JSON.stringify({lastRowBefore, lastRowAfter, appended}));
 
     // ------------------- Espelho (best-effort) -------------------
-    try { mirrorToSecondary_(header, row); } catch(e) { Logger.log('Falha ao espelhar: ' + e); }
+    try { mirrorToSecondary_(header, row, { empresa }); } catch(e) { Logger.log('Falha ao espelhar: ' + e); }
 
     // ------------------- E-mail (best-effort) -------------------
     try {
@@ -757,14 +821,25 @@ function matchesCursoEvento_(map, rowValues, cursoKey, cicloKey, localKey, opts)
 }
 
 /* Constrói linha de saída para o destino, alinhando colunas por nome */
-function buildRowForDest_(destHeader, sourceHeader, sourceRow){
+function buildRowForDest_(destHeader, sourceHeader, sourceRow, meta){
   const srcMap = headerLogicalMap_(sourceHeader);
   const dstMap = headerLogicalMap_(destHeader);
   const out = new Array(destHeader.length).fill('');
-  const put = (key) => {
+  const metaInfo = meta || {};
+  const put = (key, fallbackOpt) => {
     const srcIdx = srcMap[key];
     const dstIdx = dstMap[key];
-    if (dstIdx > -1 && srcIdx > -1) out[dstIdx] = sourceRow[srcIdx];
+    if (dstIdx === -1) return;
+
+    let value = (srcIdx > -1) ? sourceRow[srcIdx] : undefined;
+    if (value === '' || value === null || typeof value === 'undefined') {
+      if (typeof fallbackOpt !== 'undefined') {
+        const fallback = sanitize_(fallbackOpt);
+        if (fallback) value = fallback;
+      }
+    }
+
+    if (typeof value !== 'undefined') out[dstIdx] = value;
   };
 
   // Carimbo destino (se necessário)
@@ -779,7 +854,11 @@ function buildRowForDest_(destHeader, sourceHeader, sourceRow){
   put('endereco'); put('numero'); put('complemento'); put('bairro');
   put('cep'); put('cidade'); put('estado'); put('pais');
   put('profissao'); put('escolaridade'); put('graduacao');
-  put('empresa');
+  const empresaFallback = sanitize_(metaInfo.empresa)
+    || (srcMap.empresa > -1 ? sanitize_(sourceRow[srcMap.empresa]) : '')
+    || NOME_EMPRESA_DEFAULT;
+  put('empresa', empresaFallback);
+
 
   // LGPD/Consentimentos
   put('lgpdVersion'); put('lgpdTs'); put('lgpdIp'); put('optin'); put('consentImg');
@@ -799,15 +878,16 @@ function getDestSheet_(sid, sheetName = DEST_SHEET_NAME) {
 }
 
 /* Aplica espelhamento da nova linha para a planilha secundária */
-function mirrorToSecondary_(sourceHeader, newRow){
+function mirrorToSecondary_(sourceHeader, newRow, meta){
   if (!MIRROR_TARGETS.length) return;
   MIRROR_TARGETS.forEach(target => {
     try {
       const destSh = getDestSheet_(target.sid, target.sheet);
       const lastCol = destSh.getLastColumn() || STANDARD_HEADER.length;
       const destHeader = destSh.getRange(1,1,1,lastCol).getValues()[0] || [];
-      const out = buildRowForDest_(destHeader, sourceHeader, newRow);
+      const out = buildRowForDest_(destHeader, sourceHeader, newRow, meta);
       destSh.appendRow(out);
+     try { ensureEmpresaColumnPopulated_(destSh, meta && meta.empresa, destHeader); } catch (err) { Logger.log('Falha ao garantir EMPRESA no destino: ' + err); } 
     } catch (err) {
       Logger.log('Falha ao espelhar destino ' + target.sid + ': ' + err);
     }
@@ -1081,8 +1161,4 @@ function consumeSyncBypass_(sheet, rowIndex) {
   } catch (_) {}
   return false;
 }
-
-
-
-
 
