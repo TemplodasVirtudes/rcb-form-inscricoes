@@ -27,7 +27,7 @@ const SYNC_TARGETS = SYNC_TARGETS_BASE
   .filter(t => String(t.sid || '').trim())
   .filter((target, idx, arr) =>
     arr.findIndex(other => other.sid === target.sid && other.sheet === target.sheet) === idx); 
-const SYNC_COLUMNS = ['ciclo', 'status'];
+const SYNC_COLUMNS = ['ciclo', 'status', 'certLink', 'certStatus', 'certSentAt', 'certError'];
 const SYNC_PROP_FLAG = 'SYNC_MIRROR_IN_PROGRESS';
 const SYNC_CACHE_PREFIX = 'SYNC_SKIP_ROW:';
 const EMPRESA_FILL_CACHE_PREFIX = 'EMPRESA_FILL:';
@@ -173,6 +173,29 @@ function ensureStandardHeader_(sh) {
   });
   sh.setFrozenRows(1);
 }
+function ensureEmpresaColumnExists_(sh, headerOpt) {
+  if (!sh) return Array.isArray(headerOpt) ? headerOpt : [];
+
+  const lastColBefore = sh.getLastColumn();
+  const headerArr = (Array.isArray(headerOpt) && headerOpt.length)
+    ? headerOpt
+    : (lastColBefore >= 1 ? sh.getRange(1, 1, 1, lastColBefore).getValues()[0] || [] : []);
+
+  const map = headerMap_(headerArr);
+  if (map.empresa !== -1) return headerArr;
+
+  if (lastColBefore < 1) {
+    sh.getRange(1, 1).setValue('EMPRESA');
+  } else {
+    sh.insertColumnAfter(lastColBefore);
+    const newColIndex = lastColBefore + 1;
+    sh.getRange(1, newColIndex).setValue('EMPRESA');
+  }
+  sh.setFrozenRows(1);
+
+  const newLastCol = sh.getLastColumn();
+  return sh.getRange(1, 1, 1, newLastCol).getValues()[0] || [];
+}
 function ensureEmpresaColumnPopulated_(sh, fallbackValueOpt, headerOpt) {
   try {
     if (!sh) return;
@@ -194,9 +217,7 @@ function ensureEmpresaColumnPopulated_(sh, fallbackValueOpt, headerOpt) {
       return;
     }
 
-    const header = Array.isArray(headerOpt) && headerOpt.length
-      ? headerOpt
-      : (sh.getRange(1, 1, 1, lastCol).getValues()[0] || []);
+    const header = ensureEmpresaColumnExists_(sh, headerOpt);
     const map = headerMap_(header);
     const empresaIdx = map.empresa;
     if (empresaIdx === -1) {
@@ -261,7 +282,7 @@ function headerMap_(header){
   const map = {};
   map.timestamp   = findSmart('carimbo de data hora','timestamp');
   map.curso       = findSmart('curso');
-  map.local       = findSmart('local do evento','local evento','cidade do curso','cidade que fara o curso');
+  map.local       = findSmart('local do evento','local evento','cidade do curso','cidade que fara o curso','local');
   map.ciclo       = findSmart('ciclo');
   map.status      = findSmart('status');
   map.nome        = findSmart('nome completo sem abreviacoes','nome completo');
@@ -287,6 +308,10 @@ function headerMap_(header){
   map.lgpdIp      = findSmart('lgpd ip','ip');
   map.optin       = findSmart('opt in','opt-in','marketing');
   map.consentImg  = findSmart('consentimento de imagem','consent imagem','uso de imagem','imagem voz');
+  map.certLink   = findSmart('certificado pdf','certificado (pdf)','link certificado','certificado link','certificado');
+  map.certStatus = findSmart('certificado status','status certificado');
+  map.certSentAt = findSmart('certificado enviado em','certificado envio','certificado envio data','certificado enviado');
+  map.certError  = findSmart('certificado ultimo erro','certificado erro','certificado log','certificado observacao');
 
   return map;
 }
@@ -460,7 +485,8 @@ function salvarInscricao(dados) {
 
     // ------------------- Acessa planilha + mapeia colunas -------------------
     const sh = getSheet_(sid, sheetName);
-    const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0] || [];
+    let header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0] || [];
+    header = ensureEmpresaColumnExists_(sh, header);
     try { ensureEmpresaColumnPopulated_(sh, empresa, header); } catch (err) { Logger.log('Falha ao garantir EMPRESA na origem: ' + err); }
     const map = headerMap_(header);
 
@@ -862,6 +888,11 @@ function buildRowForDest_(destHeader, sourceHeader, sourceRow, meta){
 
   // LGPD/Consentimentos
   put('lgpdVersion'); put('lgpdTs'); put('lgpdIp'); put('optin'); put('consentImg');
+  put('certLink');
+  put('certStatus');
+  put('certSentAt');
+  put('certError');
+
 
   return out;
 }
@@ -883,8 +914,10 @@ function mirrorToSecondary_(sourceHeader, newRow, meta){
   MIRROR_TARGETS.forEach(target => {
     try {
       const destSh = getDestSheet_(target.sid, target.sheet);
+      try { ensureCertificateColumns_(destSh); } catch (err) { Logger.log('Falha ao garantir colunas de certificado no destino: ' + err); }
       const lastCol = destSh.getLastColumn() || STANDARD_HEADER.length;
-      const destHeader = destSh.getRange(1,1,1,lastCol).getValues()[0] || [];
+      let destHeader = destSh.getRange(1,1,1,lastCol).getValues()[0] || [];
+      destHeader = ensureEmpresaColumnExists_(destSh, destHeader);
       const out = buildRowForDest_(destHeader, sourceHeader, newRow, meta);
       destSh.appendRow(out);
      try { ensureEmpresaColumnPopulated_(destSh, meta && meta.empresa, destHeader); } catch (err) { Logger.log('Falha ao garantir EMPRESA no destino: ' + err); } 
@@ -1069,7 +1102,7 @@ function handleSyncEdit_(e) {
   const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0] || [];
   const map = headerMap_(header);
 
-  const watchCols = ['ciclo', 'status']
+  const watchCols = ['ciclo', 'status', 'certLink', 'certStatus', 'certSentAt', 'certError']
     .map(k => map[k])
     .filter(idx => idx > -1)
     .map(idx => idx + 1);
