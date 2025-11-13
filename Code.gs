@@ -43,7 +43,9 @@ const STANDARD_HEADER = [
   // Novos campos LGPD/Consentimentos (obrigatórios neste projeto)
   'LGPD_VERSION','LGPD_TS','LGPD_IP','OPT-IN','CONSENTIMENTO DE IMAGEM',
   // Identificação da empresa responsável pelo cadastro
-  'EMPRESA'
+  'EMPRESA',
+  // Colunas de certificado
+  'CERTIFICADO (PDF)','CERTIFICADO - STATUS','CERTIFICADO - ENVIADO EM','CERTIFICADO - ÚLTIMO ERRO',
 ];
 
 /* ========= Helpers utilitários ========= */
@@ -810,10 +812,13 @@ function headerLogicalMap_(headerArr){
     endereco: map.endereco, numero: map.numero, complemento: map.complemento, bairro: map.bairro,
     cep: map.cep, cidade: map.cidade, estado: map.estado, pais: map.pais,
     profissao: map.profissao, escolaridade: map.escolaridade, graduacao: map.graduacao,
-     empresa: map.empresa,
+    empresa: map.empresa,
     // LGPD/Consentimentos
     lgpdVersion: map.lgpdVersion, lgpdTs: map.lgpdTs, lgpdIp: map.lgpdIp,
     optin: map.optin, consentImg: map.consentImg,
+    // Certificados
+    certLink: map.certLink, certStatus: map.certStatus,
+    certSentAt: map.certSentAt, certError: map.certError,
   };
 }
 function matchesCursoEvento_(map, rowValues, cursoKey, cicloKey, localKey, opts) {
